@@ -1,0 +1,354 @@
+openapi: 3.1.0
+info:
+  title: Digital Wallet RAG
+  description: Asistente de banca móvil con RAG sobre documentos de bancos de Bolivia.
+  version: 0.1.0
+paths:
+  /auth/token:
+    post:
+      tags:
+      - auth
+      summary: Obtener un token
+      description: 'Login de demo: entrega un JWT al usuario de demo. No pide contraseña.
+
+
+        Enviar el token en el resto de los endpoints con el header `Authorization:
+        Bearer <token>`.'
+      operationId: create_token_auth_token_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Falta el token, es inválido o el usuario no existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /chat:
+    post:
+      tags:
+      - chat
+      summary: Preguntar al agente
+      description: Si no se envía `session_id`, se crea una sesión nueva y se devuelve
+        su id.
+      operationId: ask_chat_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '401':
+          description: Falta el token, es inválido o el usuario no existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /chat/sessions:
+    get:
+      tags:
+      - chat
+      summary: Listar sesiones
+      description: Devuelve los ids de las sesiones guardadas.
+      operationId: list_sessions_chat_sessions_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  type: string
+                type: array
+                title: Response List Sessions Chat Sessions Get
+        '401':
+          description: Falta el token, es inválido o el usuario no existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
+  /chat/sessions/{session_id}/history:
+    get:
+      tags:
+      - chat
+      summary: Historial de una sesión
+      description: Devuelve los mensajes de la sesión en orden.
+      operationId: get_history_chat_sessions__session_id__history_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MessageResponse'
+                title: Response Get History Chat Sessions  Session Id  History Get
+        '401':
+          description: Falta el token, es inválido o el usuario no existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /chat/sessions/{session_id}:
+    delete:
+      tags:
+      - chat
+      summary: Eliminar una sesión
+      description: Elimina la sesión y todo su historial.
+      operationId: delete_session_chat_sessions__session_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      responses:
+        '204':
+          description: Successful Response
+        '401':
+          description: Falta el token, es inválido o el usuario no existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /admin/index:
+    post:
+      tags:
+      - admin
+      summary: Indexar documentos
+      description: 'Carga la carpeta de documentos en la base vectorial. **Gasta tokens
+        de embedding.**
+
+
+        Por defecto guarda o actualiza los chunks; con `rebuild=true` vacía la colección
+        antes de cargar.'
+      operationId: index_documents_admin_index_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: rebuild
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Rebuild
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexResponse'
+        '401':
+          description: Falta el token, es inválido o el usuario no existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    ChatRequest:
+      properties:
+        question:
+          type: string
+          minLength: 1
+          title: Question
+          examples:
+          - ¿Cuánto cuesta el mantenimiento de una tarjeta de crédito?
+        session_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Session Id
+          description: Id de una sesión existente; si se omite se crea una nueva
+      type: object
+      required:
+      - question
+      title: ChatRequest
+    ChatResponse:
+      properties:
+        session_id:
+          type: string
+          title: Session Id
+          examples:
+          - 3f6c1c2e-8a1b-4c9e-9f2a-1d2e3f4a5b6c
+        response:
+          type: string
+          title: Response
+          examples:
+          - Respuesta del asistente con las fuentes citadas al final.
+      type: object
+      required:
+      - session_id
+      - response
+      title: ChatResponse
+    ErrorResponse:
+      properties:
+        detail:
+          type: string
+          title: Detail
+      type: object
+      required:
+      - detail
+      title: ErrorResponse
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    IndexResponse:
+      properties:
+        chunks:
+          type: integer
+          title: Chunks
+          description: Cantidad de chunks en la colección
+          examples:
+          - 384
+      type: object
+      required:
+      - chunks
+      title: IndexResponse
+    MessageResponse:
+      properties:
+        role:
+          type: string
+          title: Role
+          description: human o ai
+          examples:
+          - human
+        content:
+          type: string
+          title: Content
+          examples:
+          - ¿Cuánto cuesta el mantenimiento de una tarjeta de crédito?
+      type: object
+      required:
+      - role
+      - content
+      title: MessageResponse
+    TokenRequest:
+      properties:
+        nickname:
+          type: string
+          minLength: 1
+          title: Nickname
+          examples:
+          - ruddy
+      type: object
+      required:
+      - nickname
+      title: TokenRequest
+    TokenResponse:
+      properties:
+        access_token:
+          type: string
+          title: Access Token
+          examples:
+          - eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        token_type:
+          type: string
+          title: Token Type
+          default: bearer
+      type: object
+      required:
+      - access_token
+      title: TokenResponse
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      scheme: bearer
