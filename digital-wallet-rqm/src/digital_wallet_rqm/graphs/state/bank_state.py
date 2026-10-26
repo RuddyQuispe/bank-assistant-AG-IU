@@ -13,6 +13,7 @@ class ToolResult(TypedDict):
 
 class BankState(MessagesState):
     # "messages" viene de MessagesState y se acumula con add_messages
+    # "question" la llena el nodo ingest desde el último mensaje del usuario
     question: str
     # Campos que los nodos llenan durante la ejecución
     route: NotRequired[Route]
@@ -22,6 +23,10 @@ class BankState(MessagesState):
     response: NotRequired[str]
     # Resumen de mensajes antiguos, usado al compactar la sesión
     summary: NotRequired[str]
+
+
+class IngestUpdate(TypedDict):
+    question: str
 
 
 class AnalyzerUpdate(TypedDict):

@@ -13,16 +13,16 @@ class FakeChatService(ChatService):
     def __init__(self) -> None:
         self.deleted: list[str] = []
 
-    def ask(self, question: str, user: CurrentUser, session_id: str | None = None) -> ChatAnswer:
+    async def ask(self, question: str, user: CurrentUser, session_id: str | None = None) -> ChatAnswer:
         return ChatAnswer(session_id=session_id or "new-session", response=f"eco: {question}")
 
-    def list_sessions(self) -> list[str]:
+    async def list_sessions(self) -> list[str]:
         return ["s1", "s2"]
 
-    def get_history(self, session_id: str) -> list[ChatMessage]:
+    async def get_history(self, session_id: str) -> list[ChatMessage]:
         return [ChatMessage(role="human", content="hola"), ChatMessage(role="ai", content="eco: hola")]
 
-    def delete_session(self, session_id: str) -> None:
+    async def delete_session(self, session_id: str) -> None:
         self.deleted.append(session_id)
 
 

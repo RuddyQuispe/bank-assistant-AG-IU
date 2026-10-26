@@ -17,20 +17,20 @@ class ChatMessage:
 
 
 class ChatService(ABC):
-    """Contrato del chat: la API depende de esta clase, no de LangGraph"""
+    """Contrato del chat: la API depende de esta clase, no de LangGraph (async: la memoria es async)"""
 
     @abstractmethod
-    def ask(self, question: str, user: CurrentUser, session_id: str | None = None) -> ChatAnswer:
+    async def ask(self, question: str, user: CurrentUser, session_id: str | None = None) -> ChatAnswer:
         """Responde la pregunta del usuario; si no hay session_id crea una sesión nueva"""
 
     @abstractmethod
-    def list_sessions(self) -> list[str]:
+    async def list_sessions(self) -> list[str]:
         """Devuelve los id de las sesiones guardadas"""
 
     @abstractmethod
-    def get_history(self, session_id: str) -> list[ChatMessage]:
+    async def get_history(self, session_id: str) -> list[ChatMessage]:
         """Devuelve los mensajes de la sesión en orden"""
 
     @abstractmethod
-    def delete_session(self, session_id: str) -> None:
+    async def delete_session(self, session_id: str) -> None:
         """Elimina la sesión y su historial"""

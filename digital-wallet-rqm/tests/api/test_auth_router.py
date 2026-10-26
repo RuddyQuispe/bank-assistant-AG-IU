@@ -16,7 +16,7 @@ class FakeChatService:
     def __init__(self) -> None:
         self.users: list[CurrentUser] = []
 
-    def ask(self, question: str, user: CurrentUser, session_id: str | None = None) -> ChatAnswer:
+    async def ask(self, question: str, user: CurrentUser, session_id: str | None = None) -> ChatAnswer:
         self.users.append(user)
         return ChatAnswer(session_id="s1", response="ok")
 

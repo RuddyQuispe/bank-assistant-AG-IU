@@ -54,7 +54,8 @@ def _context() -> GraphContext:
 
 def _ask(question: str, graph: RagAgent | None = None, config: RunnableConfig | None = None) -> dict[str, Any]:
     result: dict[str, Any] = (graph or build_rag_agent()).invoke(
-        {"messages": [HumanMessage(content=question)], "question": question}, config=config, context=_context()
+        # Solo "messages": el nodo ingest deriva "question", igual que con los clientes reales
+        {"messages": [HumanMessage(content=question)]}, config=config, context=_context()
     )
     return result
 
@@ -62,7 +63,7 @@ def _ask(question: str, graph: RagAgent | None = None, config: RunnableConfig | 
 def test_graph_compiles_with_all_nodes() -> None:
     graph = build_rag_agent()
 
-    assert {"analyzer", "retrieve", "tools", "interpreter"} <= set(graph.get_graph().nodes)
+    assert {"ingest", "analyzer", "retrieve", "tools", "interpreter"} <= set(graph.get_graph().nodes)
 
 
 def test_tools_route_runs_tools_node(monkeypatch: pytest.MonkeyPatch, interpreter_input: list[str]) -> None:

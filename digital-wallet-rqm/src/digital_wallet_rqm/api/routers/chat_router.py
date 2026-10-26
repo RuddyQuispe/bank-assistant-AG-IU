@@ -16,32 +16,32 @@ router = APIRouter(
 
 
 @router.post("", summary="Preguntar al agente")
-def ask(
+async def ask(
     body: ChatRequest,
     user: CurrentUser = Depends(get_current_user),
     service: ChatService = Depends(get_chat_service),
 ) -> ChatResponse:
     """Si no se envía `session_id`, se crea una sesión nueva y se devuelve su id."""
-    answer = service.ask(body.question, user, body.session_id)
+    answer = await service.ask(body.question, user, body.session_id)
     return ChatResponse(session_id=answer.session_id, response=answer.response)
 
 
 @router.get("/sessions", summary="Listar sesiones")
-def list_sessions(service: ChatService = Depends(get_chat_service)) -> list[str]:
+async def list_sessions(service: ChatService = Depends(get_chat_service)) -> list[str]:
     """Devuelve los ids de las sesiones guardadas."""
-    return service.list_sessions()
+    return await service.list_sessions()
 
 
 @router.get("/sessions/{session_id}/history", summary="Historial de una sesión")
-def get_history(session_id: str, service: ChatService = Depends(get_chat_service)) -> list[MessageResponse]:
+async def get_history(session_id: str, service: ChatService = Depends(get_chat_service)) -> list[MessageResponse]:
     """Devuelve los mensajes de la sesión en orden."""
     messages = []
-    for message in service.get_history(session_id):
+    for message in await service.get_history(session_id):
         messages.append(MessageResponse(role=message.role, content=message.content))
     return messages
 
 
 @router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Eliminar una sesión")
-def delete_session(session_id: str, service: ChatService = Depends(get_chat_service)) -> None:
+async def delete_session(session_id: str, service: ChatService = Depends(get_chat_service)) -> None:
     """Elimina la sesión y todo su historial."""
-    service.delete_session(session_id)
+    await service.delete_session(session_id)

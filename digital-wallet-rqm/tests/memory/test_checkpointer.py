@@ -1,5 +1,12 @@
+from pathlib import Path
+from typing import Any
+
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from digital_wallet_rqm.graphs.state.bank_state import BankState
 from digital_wallet_rqm.memory.checkpointer import (
@@ -9,13 +16,15 @@ from digital_wallet_rqm.memory.checkpointer import (
     list_sessions,
 )
 
+pytestmark = pytest.mark.anyio
 
-def _echo_node(state: BankState) -> dict:
+
+def _echo_node(state: BankState) -> dict[str, Any]:
     # Responde con eco del último mensaje para simular el LLM
     return {"messages": [AIMessage(content=f"eco: {state['messages'][-1].text}")]}
 
 
-def _build_graph(checkpointer):
+def _build_graph(checkpointer: BaseCheckpointSaver[str]) -> CompiledStateGraph[Any, Any, Any, Any]:
     builder = StateGraph(BankState)
     builder.add_node("echo", _echo_node)
     builder.add_edge(START, "echo")
@@ -23,41 +32,39 @@ def _build_graph(checkpointer):
     return builder.compile(checkpointer=checkpointer)
 
 
-def _config(thread_id: str) -> dict:
+def _config(thread_id: str) -> RunnableConfig:
     return {"configurable": {"thread_id": thread_id}}
 
 
-def test_sqlite_checkpointer_persists_messages_per_session(tmp_path):
+async def test_sqlite_checkpointer_persists_messages_per_session(tmp_path: Path) -> None:
     db_path = tmp_path / "memory.db"
-    with get_checkpointer(backend="sqlite", sqlite_path=db_path) as checkpointer:
+    async with get_checkpointer(backend="sqlite", sqlite_path=db_path) as checkpointer:
         graph = _build_graph(checkpointer)
-        graph.invoke({"messages": [HumanMessage(content="hola")]}, _config("s1"))
-        graph.invoke({"messages": [HumanMessage(content="saldo")]}, _config("s1"))
-        graph.invoke({"messages": [HumanMessage(content="otra")]}, _config("s2"))
+        await graph.ainvoke({"messages": [HumanMessage(content="hola")]}, _config("s1"))
+        await graph.ainvoke({"messages": [HumanMessage(content="saldo")]}, _config("s1"))
+        await graph.ainvoke({"messages": [HumanMessage(content="otra")]}, _config("s2"))
 
     # Reabre la conexión para comprobar que los datos quedaron en disco
-    with get_checkpointer(backend="sqlite", sqlite_path=db_path) as checkpointer:
+    async with get_checkpointer(backend="sqlite", sqlite_path=db_path) as checkpointer:
         graph = _build_graph(checkpointer)
-        messages = get_session_messages(graph, "s1")
+        messages = await get_session_messages(graph, "s1")
         assert [m.text for m in messages] == ["hola", "eco: hola", "saldo", "eco: saldo"]
-        assert sorted(list_sessions(checkpointer)) == ["s1", "s2"]
+        assert sorted(await list_sessions(checkpointer)) == ["s1", "s2"]
 
 
-def test_delete_session_removes_only_that_session(tmp_path):
-    with get_checkpointer(backend="sqlite", sqlite_path=tmp_path / "memory.db") as checkpointer:
+async def test_delete_session_removes_only_that_session(tmp_path: Path) -> None:
+    async with get_checkpointer(backend="sqlite", sqlite_path=tmp_path / "memory.db") as checkpointer:
         graph = _build_graph(checkpointer)
-        graph.invoke({"messages": [HumanMessage(content="hola")]}, _config("s1"))
-        graph.invoke({"messages": [HumanMessage(content="hola")]}, _config("s2"))
+        await graph.ainvoke({"messages": [HumanMessage(content="hola")]}, _config("s1"))
+        await graph.ainvoke({"messages": [HumanMessage(content="hola")]}, _config("s2"))
 
-        delete_session(checkpointer, "s1")
+        await delete_session(checkpointer, "s1")
 
-        assert list_sessions(checkpointer) == ["s2"]
-        assert get_session_messages(graph, "s1") == []
+        assert await list_sessions(checkpointer) == ["s2"]
+        assert await get_session_messages(graph, "s1") == []
 
 
-def test_unknown_backend_raises_error():
-    import pytest
-
+async def test_unknown_backend_raises_error() -> None:
     with pytest.raises(ValueError, match="mongo"):
-        with get_checkpointer(backend="mongo"):
+        async with get_checkpointer(backend="mongo"):
             pass

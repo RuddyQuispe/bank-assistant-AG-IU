@@ -1,57 +1,57 @@
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
 
 from langchain_core.messages import BaseMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.checkpoint.postgres import PostgresSaver
-from langgraph.checkpoint.sqlite import SqliteSaver
 
 from digital_wallet_rqm.config.settings import settings
 
 MemoryBackend = Literal["sqlite", "postgres"]
 
 
-@contextmanager
-def get_checkpointer(
+@asynccontextmanager
+async def get_checkpointer(
     backend: str = settings.MEMORY_BACKEND,
     sqlite_path: Path = settings.SQLITE_DB_PATH,
     database_url: str | None = settings.DATABASE_URL,
-) -> Iterator[BaseCheckpointSaver]:
-    """Abre el checkpointer del motor configurado y cierra la conexión al salir."""
+) -> AsyncIterator[BaseCheckpointSaver[str]]:
+    """Abre el checkpointer async del motor configurado y cierra la conexión al salir."""
+    # Async porque el adaptador AG-UI usa aget_state/astream_events
     if backend == "sqlite":
         # SQLite no crea carpetas: se asegura que exista el directorio
         sqlite_path.parent.mkdir(parents=True, exist_ok=True)
-        with SqliteSaver.from_conn_string(str(sqlite_path)) as saver:
+        async with AsyncSqliteSaver.from_conn_string(str(sqlite_path)) as saver:
             yield saver
     elif backend == "postgres":
         if not database_url:
             raise ValueError("DATABASE_URL es obligatorio para el motor postgres")
-        with PostgresSaver.from_conn_string(database_url) as saver:
+        async with AsyncPostgresSaver.from_conn_string(database_url) as saver:
             # Crea o migra las tablas; es seguro llamarlo en cada arranque
-            saver.setup()
+            await saver.setup()
             yield saver
     else:
         raise ValueError(f"Motor de memoria no soportado: {backend}")
 
 
-def list_sessions(checkpointer: BaseCheckpointSaver) -> list[str]:
+async def list_sessions(checkpointer: BaseCheckpointSaver[str]) -> list[str]:
     """Devuelve los thread_id únicos (sesiones) guardados."""
     # Hay un checkpoint por paso del grafo, por eso se eliminan duplicados
-    return list(dict.fromkeys(
-        checkpoint.config["configurable"]["thread_id"]
-        for checkpoint in checkpointer.list(None)
-    ))
+    thread_ids = [checkpoint.config["configurable"]["thread_id"] async for checkpoint in checkpointer.alist(None)]
+    return list(dict.fromkeys(thread_ids))
 
 
-def get_session_messages(graph: CompiledStateGraph[Any, Any, Any, Any], session_id: str) -> list[BaseMessage]:
+async def get_session_messages(graph: CompiledStateGraph[Any, Any, Any, Any], session_id: str) -> list[BaseMessage]:
     """Devuelve los mensajes del último estado de la sesión."""
-    state = graph.get_state({"configurable": {"thread_id": session_id}})
-    return state.values.get("messages", [])
+    state = await graph.aget_state({"configurable": {"thread_id": session_id}})
+    messages: list[BaseMessage] = state.values.get("messages", [])
+    return messages
 
 
-def delete_session(checkpointer: BaseCheckpointSaver, session_id: str) -> None:
+async def delete_session(checkpointer: BaseCheckpointSaver[str], session_id: str) -> None:
     """Elimina todos los checkpoints de la sesión."""
-    checkpointer.delete_thread(session_id)
+    await checkpointer.adelete_thread(session_id)

@@ -22,8 +22,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Se crea primero: si falta JWT_SECRET la app no arranca
     app.state.auth_service = AuthService(settings.JWT_SECRET)
 
-    # La conexión del checkpointer se abre una sola vez y se cierra al salir del "with"
-    with get_checkpointer() as checkpointer:
+    # La conexión del checkpointer se abre una sola vez y se cierra al salir del "async with"
+    async with get_checkpointer() as checkpointer:
         # Una sola instancia del vector store, compartida por el chat y el indexador
         vector_store = get_or_create_vector_store(settings.CHROMA_COLLECTION)
 
