@@ -5,24 +5,35 @@ from digital_wallet_rqm.api.dependencies import get_chat_service, get_current_us
 from digital_wallet_rqm.api.main import app
 from digital_wallet_rqm.models.current_user import CurrentUser
 from digital_wallet_rqm.services.chat_service import ChatAnswer, ChatMessage, ChatService
+from digital_wallet_rqm.services.session_repository import SessionForbiddenError
 
 
 class FakeChatService(ChatService):
-    """Servicio falso: evita llamar al LLM y a la base de datos"""
+    """Servicio falso: evita llamar al LLM y a la base de datos; "ajena" es de otro usuario"""
 
     def __init__(self) -> None:
         self.deleted: list[str] = []
+        self.users: list[str] = []
+
+    @staticmethod
+    def _check(session_id: str | None) -> None:
+        if session_id == "ajena":
+            raise SessionForbiddenError(session_id)
 
     async def ask(self, question: str, user: CurrentUser, session_id: str | None = None) -> ChatAnswer:
+        self._check(session_id)
         return ChatAnswer(session_id=session_id or "new-session", response=f"eco: {question}")
 
-    async def list_sessions(self) -> list[str]:
+    async def list_sessions(self, user: CurrentUser) -> list[str]:
+        self.users.append(user.user_id)
         return ["s1", "s2"]
 
-    async def get_history(self, session_id: str) -> list[ChatMessage]:
+    async def get_history(self, user: CurrentUser, session_id: str) -> list[ChatMessage]:
+        self._check(session_id)
         return [ChatMessage(role="human", content="hola"), ChatMessage(role="ai", content="eco: hola")]
 
-    async def delete_session(self, session_id: str) -> None:
+    async def delete_session(self, user: CurrentUser, session_id: str) -> None:
+        self._check(session_id)
         self.deleted.append(session_id)
 
 
@@ -61,11 +72,13 @@ def test_post_chat_rejects_empty_question(client):
     assert response.status_code == 422
 
 
-def test_get_sessions(client):
+def test_get_sessions(client, fake_service):
     response = client.get("/chat/sessions")
 
     assert response.status_code == 200
     assert response.json() == ["s1", "s2"]
+    # Las sesiones se piden para el usuario del token
+    assert fake_service.users == ["1"]
 
 
 def test_get_history(client):
@@ -83,3 +96,19 @@ def test_delete_session(client, fake_service):
 
     assert response.status_code == 204
     assert fake_service.deleted == ["s1"]
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        ("post", "/chat", {"question": "hola", "session_id": "ajena"}),
+        ("get", "/chat/sessions/ajena/history", None),
+        ("delete", "/chat/sessions/ajena", None),
+    ],
+)
+def test_session_of_another_user_returns_403(client, fake_service, method, path, body):
+    response = client.request(method, path, json=body)
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "La sesión pertenece a otro usuario"}
+    assert fake_service.deleted == []

@@ -17,20 +17,23 @@ class ChatMessage:
 
 
 class ChatService(ABC):
-    """Contrato del chat: la API depende de esta clase, no de LangGraph (async: la memoria es async)"""
+    """Contrato del chat: la API depende de esta clase, no de LangGraph (async: la memoria es async).
+
+    Cada operación recibe al usuario: una sesión de otro usuario lanza SessionForbiddenError.
+    """
 
     @abstractmethod
     async def ask(self, question: str, user: CurrentUser, session_id: str | None = None) -> ChatAnswer:
         """Responde la pregunta del usuario; si no hay session_id crea una sesión nueva"""
 
     @abstractmethod
-    async def list_sessions(self) -> list[str]:
-        """Devuelve los id de las sesiones guardadas"""
+    async def list_sessions(self, user: CurrentUser) -> list[str]:
+        """Devuelve los id de las sesiones del usuario"""
 
     @abstractmethod
-    async def get_history(self, session_id: str) -> list[ChatMessage]:
+    async def get_history(self, user: CurrentUser, session_id: str) -> list[ChatMessage]:
         """Devuelve los mensajes de la sesión en orden"""
 
     @abstractmethod
-    async def delete_session(self, session_id: str) -> None:
+    async def delete_session(self, user: CurrentUser, session_id: str) -> None:
         """Elimina la sesión y su historial"""

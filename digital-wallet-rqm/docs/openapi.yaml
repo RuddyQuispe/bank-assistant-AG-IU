@@ -67,6 +67,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: La sesión pertenece a otro usuario
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '422':
           description: Validation Error
           content:
@@ -80,7 +86,7 @@ paths:
       tags:
       - chat
       summary: Listar sesiones
-      description: Devuelve los ids de las sesiones guardadas.
+      description: Devuelve los ids de las sesiones del usuario del token.
       operationId: list_sessions_chat_sessions_get
       responses:
         '200':
@@ -94,6 +100,12 @@ paths:
                 title: Response List Sessions Chat Sessions Get
         '401':
           description: Falta el token, es inválido o el usuario no existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: La sesión pertenece a otro usuario
           content:
             application/json:
               schema:
@@ -132,6 +144,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: La sesión pertenece a otro usuario
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '422':
           description: Validation Error
           content:
@@ -159,6 +177,12 @@ paths:
           description: Successful Response
         '401':
           description: Falta el token, es inválido o el usuario no existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: La sesión pertenece a otro usuario
           content:
             application/json:
               schema:

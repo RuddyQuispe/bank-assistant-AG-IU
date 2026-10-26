@@ -38,20 +38,9 @@ async def get_checkpointer(
         raise ValueError(f"Motor de memoria no soportado: {backend}")
 
 
-async def list_sessions(checkpointer: BaseCheckpointSaver[str]) -> list[str]:
-    """Devuelve los thread_id únicos (sesiones) guardados."""
-    # Hay un checkpoint por paso del grafo, por eso se eliminan duplicados
-    thread_ids = [checkpoint.config["configurable"]["thread_id"] async for checkpoint in checkpointer.alist(None)]
-    return list(dict.fromkeys(thread_ids))
-
-
 async def get_session_messages(graph: CompiledStateGraph[Any, Any, Any, Any], session_id: str) -> list[BaseMessage]:
     """Devuelve los mensajes del último estado de la sesión."""
     state = await graph.aget_state({"configurable": {"thread_id": session_id}})
     messages: list[BaseMessage] = state.values.get("messages", [])
     return messages
 
-
-async def delete_session(checkpointer: BaseCheckpointSaver[str], session_id: str) -> None:
-    """Elimina todos los checkpoints de la sesión."""
-    await checkpointer.adelete_thread(session_id)

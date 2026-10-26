@@ -9,12 +9,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from digital_wallet_rqm.graphs.state.bank_state import BankState
-from digital_wallet_rqm.memory.checkpointer import (
-    delete_session,
-    get_checkpointer,
-    get_session_messages,
-    list_sessions,
-)
+from digital_wallet_rqm.memory.checkpointer import get_checkpointer, get_session_messages
 
 pytestmark = pytest.mark.anyio
 
@@ -49,19 +44,7 @@ async def test_sqlite_checkpointer_persists_messages_per_session(tmp_path: Path)
         graph = _build_graph(checkpointer)
         messages = await get_session_messages(graph, "s1")
         assert [m.text for m in messages] == ["hola", "eco: hola", "saldo", "eco: saldo"]
-        assert sorted(await list_sessions(checkpointer)) == ["s1", "s2"]
-
-
-async def test_delete_session_removes_only_that_session(tmp_path: Path) -> None:
-    async with get_checkpointer(backend="sqlite", sqlite_path=tmp_path / "memory.db") as checkpointer:
-        graph = _build_graph(checkpointer)
-        await graph.ainvoke({"messages": [HumanMessage(content="hola")]}, _config("s1"))
-        await graph.ainvoke({"messages": [HumanMessage(content="hola")]}, _config("s2"))
-
-        await delete_session(checkpointer, "s1")
-
-        assert await list_sessions(checkpointer) == ["s2"]
-        assert await get_session_messages(graph, "s1") == []
+        assert [m.text for m in await get_session_messages(graph, "s2")] == ["otra", "eco: otra"]
 
 
 async def test_unknown_backend_raises_error() -> None:

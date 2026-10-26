@@ -1,18 +1,20 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request, status
+from fastapi.responses import HTMLResponse, JSONResponse
 from scalar_fastapi import Theme, get_scalar_api_reference
 
 from digital_wallet_rqm.api.routers import auth_router, chat_router, index_router
 from digital_wallet_rqm.config.settings import settings
 from digital_wallet_rqm.core.embedding import get_or_create_vector_store
 from digital_wallet_rqm.graphs.rag_agent import build_rag_agent
+from digital_wallet_rqm.memory.checkpoint_session_repository import CheckpointSessionRepository
 from digital_wallet_rqm.memory.checkpointer import get_checkpointer
 from digital_wallet_rqm.services.auth_service import AuthService
 from digital_wallet_rqm.services.indexing_service import DocumentIndexer
 from digital_wallet_rqm.services.langgraph_chat_service import LangGraphChatService
+from digital_wallet_rqm.services.session_repository import SessionForbiddenError
 
 
 @asynccontextmanager
@@ -37,7 +39,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.document_indexer = document_indexer
         app.state.chat_service = LangGraphChatService(
             agent=build_rag_agent(checkpointer),
-            checkpointer=checkpointer,
+            sessions=CheckpointSessionRepository(checkpointer),
             vector_store=vector_store,
         )
         yield
@@ -56,6 +58,7 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if docs_enabled else None,
         openapi_url="/openapi.json" if docs_enabled else None,
     )
+    app.add_exception_handler(SessionForbiddenError, _session_forbidden)
     app.include_router(auth_router.router)
     app.include_router(chat_router.router)
     app.include_router(index_router.router)
@@ -70,6 +73,11 @@ def create_app() -> FastAPI:
         app.add_api_route(settings.SCALAR_PATH, scalar_docs, include_in_schema=False)
 
     return app
+
+
+async def _session_forbidden(request: Request, error: Exception) -> JSONResponse:
+    # Mismo formato que el resto de errores ({"detail": ...}); no se revela de quién es la sesión
+    return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"detail": "La sesión pertenece a otro usuario"})
 
 
 app = create_app()
