@@ -7,6 +7,7 @@ from digital_wallet_rqm.exceptions.errors import (
     InvalidTokenError,
     NotFoundError,
     SessionForbiddenError,
+    SessionNotFoundError,
     UnauthorizedError,
 )
 
@@ -19,5 +20,6 @@ __all__ = [
     "InvalidTokenError",
     "NotFoundError",
     "SessionForbiddenError",
+    "SessionNotFoundError",
     "UnauthorizedError",
 ]

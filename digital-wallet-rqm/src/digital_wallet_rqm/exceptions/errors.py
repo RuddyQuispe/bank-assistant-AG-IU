@@ -48,6 +48,12 @@ class SessionForbiddenError(ForbiddenError):
     default_detail = "La sesión pertenece a otro usuario"
 
 
+class SessionNotFoundError(NotFoundError):
+    """El id de sesión no existe: las sesiones nuevas se crean sin id y el servidor lo asigna"""
+
+    default_detail = "La sesión no existe"
+
+
 class InvalidCredentialsError(UnauthorizedError):
     """El login falló: el usuario no existe"""
 

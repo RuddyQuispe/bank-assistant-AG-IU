@@ -45,8 +45,8 @@ paths:
       tags:
       - chat
       summary: Preguntar al agente
-      description: Si no se envía `session_id`, se crea una sesión nueva y se devuelve
-        su id.
+      description: Si no se envía `session_id`, el servidor crea una sesión nueva
+        y devuelve su id.
       operationId: ask_chat_post
       requestBody:
         content:
@@ -73,6 +73,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: La sesión no existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: La sesión pertenece a otro usuario
           content:
@@ -86,7 +92,8 @@ paths:
       tags:
       - chat
       summary: Listar sesiones
-      description: Devuelve los ids de las sesiones del usuario del token.
+      description: Devuelve las sesiones del usuario del token, la de actividad más
+        reciente primero.
       operationId: list_sessions_chat_sessions_get
       responses:
         '200':
@@ -95,7 +102,7 @@ paths:
             application/json:
               schema:
                 items:
-                  type: string
+                  $ref: '#/components/schemas/SessionResponse'
                 type: array
                 title: Response List Sessions Chat Sessions Get
         '422':
@@ -110,8 +117,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: La sesión pertenece a otro usuario
+      security:
+      - HTTPBearer: []
+    post:
+      tags:
+      - chat
+      summary: Crear una sesión
+      description: Crea una sesión vacía con id asignado por el servidor (lo usa el
+        frontend AG-UI como `threadId`).
+      operationId: create_session_chat_sessions_post
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '422':
+          description: El cuerpo o los parámetros no cumplen el formato esperado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Falta el token, es inválido o el usuario no existe
           content:
             application/json:
               schema:
@@ -156,6 +185,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: La sesión no existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: La sesión pertenece a otro usuario
           content:
@@ -189,6 +224,12 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Falta el token, es inválido o el usuario no existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: La sesión no existe
           content:
             application/json:
               schema:
@@ -245,8 +286,12 @@ paths:
       tags:
       - agents
       summary: Correr el agente por AG-UI (streaming)
-      description: '`threadId` es la sesión: si es de otro usuario responde 403 antes
-        de abrir el stream.'
+      description: '`threadId` es una sesión creada antes con `POST /chat/sessions`
+        (el id lo asigna el servidor).
+
+
+        Si no existe responde 404 y si es de otro usuario, 403, antes de abrir el
+        stream.'
       operationId: run_wallet_agent_agents_wallet_post
       requestBody:
         content:
@@ -268,6 +313,12 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Falta el token, es inválido o el usuario no existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: La sesión no existe
           content:
             application/json:
               schema:
@@ -425,7 +476,8 @@ components:
           - type: string
           - type: 'null'
           title: Session Id
-          description: Id de una sesión existente; si se omite se crea una nueva
+          description: Id de una sesión existente; si se omite, el servidor crea una
+            nueva y devuelve su id
       type: object
       required:
       - question
@@ -847,6 +899,36 @@ components:
         array mean the same thing, so requiring them would catch nothing a
 
         producer could get wrong.'
+    SessionResponse:
+      properties:
+        session_id:
+          type: string
+          title: Session Id
+          examples:
+          - 3f6c1c2e-8a1b-4c9e-9f2a-1d2e3f4a5b6c
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+          description: Primeros 150 caracteres de la primera pregunta; null si aún
+            no hay preguntas
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+          description: Última actividad; el listado se ordena por este campo
+      type: object
+      required:
+      - session_id
+      - title
+      - created_at
+      - updated_at
+      title: SessionResponse
     SystemMessage:
       properties:
         subagentRunId:

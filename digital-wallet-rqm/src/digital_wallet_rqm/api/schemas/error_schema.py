@@ -21,6 +21,11 @@ UNAUTHORIZED_RESPONSE: dict[int | str, dict[str, Any]] = {
     401: {"model": ErrorResponse, "description": "Falta el token, es inválido o el usuario no existe"},
 }
 
+# Respuesta 404 para la documentación: el id de sesión no existe (las sesiones nuevas se crean sin id)
+NOT_FOUND_RESPONSE: dict[int | str, dict[str, Any]] = {
+    404: {"model": ErrorResponse, "description": "La sesión no existe"},
+}
+
 # Respuesta 403 para la documentación: la responde el handler global de ForbiddenError (api/exceptions)
 FORBIDDEN_RESPONSE: dict[int | str, dict[str, Any]] = {
     403: {"model": ErrorResponse, "description": "La sesión pertenece a otro usuario"},

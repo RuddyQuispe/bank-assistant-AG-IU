@@ -1,6 +1,6 @@
 from collections.abc import AsyncIterator
 
-from ag_ui.core import RunAgentInput
+from ag_ui.core import EventType, RunAgentInput, UserMessage
 from ag_ui.encoder import EventEncoder
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
@@ -13,7 +13,7 @@ from digital_wallet_rqm.api.dependencies import (
     get_session_repository,
     get_vector_store,
 )
-from digital_wallet_rqm.api.schemas.error_schema import FORBIDDEN_RESPONSE, UNAUTHORIZED_RESPONSE
+from digital_wallet_rqm.api.schemas.error_schema import FORBIDDEN_RESPONSE, NOT_FOUND_RESPONSE, UNAUTHORIZED_RESPONSE
 from digital_wallet_rqm.graphs.context import GraphContext
 from digital_wallet_rqm.graphs.rag_agent import RagAgent
 from digital_wallet_rqm.models.current_user import CurrentUser
@@ -24,7 +24,7 @@ router = APIRouter(
     prefix="/agents",
     tags=["agents"],
     dependencies=[Depends(get_current_user)],
-    responses={**UNAUTHORIZED_RESPONSE, **FORBIDDEN_RESPONSE},
+    responses={**UNAUTHORIZED_RESPONSE, **NOT_FOUND_RESPONSE, **FORBIDDEN_RESPONSE},
 )
 
 
@@ -37,19 +37,32 @@ async def run_wallet_agent(
     sessions: SessionRepository = Depends(get_session_repository),
     vector_store: VectorStore = Depends(get_vector_store),
 ) -> StreamingResponse:
-    """`threadId` es la sesión: si es de otro usuario responde 403 antes de abrir el stream."""
-    await sessions.ensure_owner(user, input_data.thread_id)
+    """`threadId` es una sesión creada antes con `POST /chat/sessions` (el id lo asigna el servidor).
 
-    adapter = WalletAGUIAdapter(
-        graph=agent,
-        context=GraphContext(vector_store=vector_store, user=user),
-        owner_id=user.user_id,
-    )
+    Si no existe responde 404 y si es de otro usuario, 403, antes de abrir el stream.
+    """
+    await sessions.get_owned(user, input_data.thread_id)
+
+    adapter = WalletAGUIAdapter(graph=agent, context=GraphContext(vector_store=vector_store, user=user))
     encoder = EventEncoder(accept=request.headers.get("accept", "text/event-stream"))
+    question = _last_user_text(input_data)
 
     async def events() -> AsyncIterator[str]:
         # Los errores del grafo llegan como evento RUN_ERROR: el status 200 ya se envió
+        finished = False
         async for event in adapter.events(input_data):
+            finished = finished or event.type == EventType.RUN_FINISHED
             yield encoder.encode(event)
+        # Igual que en /chat: título y actividad solo si el run terminó bien
+        if finished and question:
+            await sessions.record_question(input_data.thread_id, question)
 
     return StreamingResponse(events(), media_type=encoder.get_content_type())
+
+
+def _last_user_text(input_data: RunAgentInput) -> str | None:
+    """Texto del último mensaje del usuario (el que inicia este run); None si no es texto"""
+    for message in reversed(input_data.messages):
+        if isinstance(message, UserMessage):
+            return message.content if isinstance(message.content, str) else None
+    return None

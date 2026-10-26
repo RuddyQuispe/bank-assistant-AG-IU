@@ -7,7 +7,6 @@ from langchain_core.runnables import RunnableConfig
 
 from digital_wallet_rqm.graphs.context import GraphContext
 from digital_wallet_rqm.graphs.rag_agent import RagAgent
-from digital_wallet_rqm.memory.checkpoint_session_repository import owner_metadata
 
 AGENT_NAME = "wallet"
 
@@ -19,13 +18,11 @@ class WalletAGUIAdapter(LangGraphAGUIAgent):
     lleva al usuario del token.
     """
 
-    def __init__(self, graph: RagAgent, context: GraphContext, owner_id: str) -> None:
+    def __init__(self, graph: RagAgent, context: GraphContext) -> None:
         super().__init__(
             name=AGENT_NAME,
             # La anotación de la librería asume grafos sin context_schema; el contexto se pasa abajo
             graph=cast(Any, graph),
-            # La metadata guarda al dueño en cada checkpoint, igual que el chat REST
-            config={"metadata": owner_metadata(owner_id)},
         )
         self._graph_context = context
 

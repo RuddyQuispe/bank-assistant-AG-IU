@@ -12,8 +12,9 @@ from digital_wallet_rqm.api.schemas.error_schema import VALIDATION_ERROR_RESPONS
 from digital_wallet_rqm.config.settings import settings
 from digital_wallet_rqm.core.embedding import get_or_create_vector_store
 from digital_wallet_rqm.graphs.rag_agent import build_rag_agent
-from digital_wallet_rqm.memory.checkpoint_session_repository import CheckpointSessionRepository
 from digital_wallet_rqm.memory.checkpointer import get_checkpointer
+from digital_wallet_rqm.persistence.database import get_engine
+from digital_wallet_rqm.persistence.repositories import SqlSessionRepository
 from digital_wallet_rqm.services.auth_service import AuthService
 from digital_wallet_rqm.services.indexing_service import DocumentIndexer
 from digital_wallet_rqm.services.langgraph_chat_service import LangGraphChatService
@@ -26,8 +27,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Se crea primero: si falta JWT_SECRET la app no arranca
     app.state.auth_service = AuthService(settings.JWT_SECRET)
 
-    # La conexión del checkpointer se abre una sola vez y se cierra al salir del "async with"
-    async with get_checkpointer() as checkpointer:
+    # Las conexiones se abren una sola vez y se cierran al salir del "async with":
+    # el checkpointer (tablas de LangGraph) y el engine de la tabla propia "sessions", en la misma base
+    async with get_checkpointer() as checkpointer, get_engine() as engine:
         # Una sola instancia del vector store, compartida por el chat y el indexador
         vector_store = get_or_create_vector_store(settings.CHROMA_COLLECTION)
 
@@ -41,7 +43,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.document_indexer = document_indexer
         # Grafo, sesiones y vector store se comparten entre el chat REST y el adaptador AG-UI
         app.state.rag_agent = build_rag_agent(checkpointer)
-        app.state.session_repository = CheckpointSessionRepository(checkpointer)
+        app.state.session_repository = SqlSessionRepository(engine, checkpointer)
         app.state.vector_store = vector_store
         app.state.chat_service = LangGraphChatService(
             agent=app.state.rag_agent,
