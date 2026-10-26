@@ -3,9 +3,9 @@ from fastapi.testclient import TestClient
 
 from digital_wallet_rqm.api.dependencies import get_chat_service, get_current_user
 from digital_wallet_rqm.api.main import app
+from digital_wallet_rqm.exceptions import SessionForbiddenError
 from digital_wallet_rqm.models.current_user import CurrentUser
 from digital_wallet_rqm.services.chat_service import ChatAnswer, ChatMessage, ChatService
-from digital_wallet_rqm.services.session_repository import SessionForbiddenError
 
 
 class FakeChatService(ChatService):
@@ -18,7 +18,7 @@ class FakeChatService(ChatService):
     @staticmethod
     def _check(session_id: str | None) -> None:
         if session_id == "ajena":
-            raise SessionForbiddenError(session_id)
+            raise SessionForbiddenError()
 
     async def ask(self, question: str, user: CurrentUser, session_id: str | None = None) -> ChatAnswer:
         self._check(session_id)
@@ -110,5 +110,5 @@ def test_session_of_another_user_returns_403(client, fake_service, method, path,
     response = client.request(method, path, json=body)
 
     assert response.status_code == 403
-    assert response.json() == {"detail": "La sesión pertenece a otro usuario"}
+    assert response.json() == {"error": "Acceso denegado", "detail": "La sesión pertenece a otro usuario"}
     assert fake_service.deleted == []

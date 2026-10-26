@@ -1,8 +1,9 @@
 import jwt
 import pytest
 
+from digital_wallet_rqm.exceptions import InvalidTokenError
 from digital_wallet_rqm.models.current_user import CurrentUser
-from digital_wallet_rqm.services.auth_service import AuthService, InvalidTokenError
+from digital_wallet_rqm.services.auth_service import AuthService
 
 SECRET = "test-secret-with-at-least-32-bytes!!"
 RUDDY = CurrentUser(user_id="1", nickname="ruddy")

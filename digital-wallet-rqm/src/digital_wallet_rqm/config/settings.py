@@ -16,6 +16,8 @@ class LangChainSettings:
     DOCS_ENABLED: bool = os.getenv("DOCS_ENABLED", "true").lower() == "true"
     SCALAR_PATH: str = os.getenv("SCALAR_PATH", "/scalar")
     SCALAR_THEME: str = os.getenv("SCALAR_THEME", "default")
+    # errores 500: true agrega el traceback en "detail" (solo desarrollo: expone código interno)
+    ERROR_TRACEBACK_ENABLED: bool = os.getenv("ERROR_TRACEBACK_ENABLED", "false").lower() == "true"
     # CORS: orígenes del frontend separados por coma (Vite usa el puerto 5173 por defecto)
     FRONTEND_ORIGINS: list[str] = [
         origin.strip() for origin in os.getenv("FRONTEND_ORIGINS", "http://localhost:5173").split(",") if origin.strip()

@@ -1,10 +1,11 @@
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from langchain_core.vectorstores import VectorStore
 
+from digital_wallet_rqm.exceptions import UnauthorizedError
 from digital_wallet_rqm.graphs.rag_agent import RagAgent
 from digital_wallet_rqm.models.current_user import CurrentUser
-from digital_wallet_rqm.services.auth_service import AuthService, InvalidTokenError
+from digital_wallet_rqm.services.auth_service import AuthService
 from digital_wallet_rqm.services.chat_service import ChatService
 from digital_wallet_rqm.services.indexing_service import DocumentIndexer
 from digital_wallet_rqm.services.session_repository import SessionRepository
@@ -55,16 +56,6 @@ def get_current_user(
 ) -> CurrentUser:
     """Filtro de auth: lee el token "Authorization: Bearer ..." y devuelve el usuario, o responde 401"""
     if credentials is None:
-        raise _unauthorized("Falta el token")
-    try:
-        return auth_service.read_user(credentials.credentials)
-    except InvalidTokenError as error:
-        raise _unauthorized("Token inválido") from error
-
-
-def _unauthorized(detail: str) -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail=detail,
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+        raise UnauthorizedError("Falta el token")
+    # Un token inválido lanza InvalidTokenError: el handler global responde 401 "Token inválido"
+    return auth_service.read_user(credentials.credentials)

@@ -6,13 +6,13 @@ import pytest
 from langchain_core.messages import AIMessage
 from langgraph.graph import END, START, StateGraph
 
+from digital_wallet_rqm.exceptions import SessionForbiddenError
 from digital_wallet_rqm.graphs.state.bank_state import BankState
 from digital_wallet_rqm.memory.checkpoint_session_repository import CheckpointSessionRepository
 from digital_wallet_rqm.memory.checkpointer import get_checkpointer
 from digital_wallet_rqm.models.current_user import CurrentUser
 from digital_wallet_rqm.services.chat_service import ChatMessage
 from digital_wallet_rqm.services.langgraph_chat_service import LangGraphChatService
-from digital_wallet_rqm.services.session_repository import SessionForbiddenError
 
 pytestmark = pytest.mark.anyio
 

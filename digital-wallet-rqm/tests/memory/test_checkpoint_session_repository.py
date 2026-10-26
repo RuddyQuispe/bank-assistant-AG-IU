@@ -7,10 +7,10 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from digital_wallet_rqm.exceptions import SessionForbiddenError
 from digital_wallet_rqm.memory.checkpoint_session_repository import CheckpointSessionRepository, owner_metadata
 from digital_wallet_rqm.memory.checkpointer import get_checkpointer
 from digital_wallet_rqm.models.current_user import CurrentUser
-from digital_wallet_rqm.services.session_repository import SessionForbiddenError
 
 pytestmark = pytest.mark.anyio
 

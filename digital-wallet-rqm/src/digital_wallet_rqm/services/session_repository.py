@@ -1,10 +1,7 @@
 from abc import ABC, abstractmethod
 
+from digital_wallet_rqm.exceptions import SessionForbiddenError
 from digital_wallet_rqm.models.current_user import CurrentUser
-
-
-class SessionForbiddenError(Exception):
-    """La sesión existe pero pertenece a otro usuario"""
 
 
 class SessionRepository(ABC):
@@ -26,4 +23,4 @@ class SessionRepository(ABC):
         """Deja pasar si la sesión es nueva o del usuario; si es de otro lanza SessionForbiddenError"""
         owner = await self.find_owner(session_id)
         if owner is not None and owner != user.user_id:
-            raise SessionForbiddenError(session_id)
+            raise SessionForbiddenError()

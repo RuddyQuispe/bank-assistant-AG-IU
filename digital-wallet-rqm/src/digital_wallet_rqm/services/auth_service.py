@@ -3,11 +3,8 @@ from datetime import UTC, datetime, timedelta
 import jwt
 
 from digital_wallet_rqm.config.settings import settings
+from digital_wallet_rqm.exceptions import InvalidTokenError
 from digital_wallet_rqm.models.current_user import CurrentUser
-
-
-class InvalidTokenError(Exception):
-    """El token no es válido: mal firmado, vencido, de otro emisor o mal formado"""
 
 
 class AuthService:

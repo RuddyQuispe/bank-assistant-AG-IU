@@ -129,7 +129,7 @@ def test_session_of_another_user_returns_403(client: TestClient, env: Env) -> No
     response = client.post("/agents/wallet", json=_run_input("ajena"))
 
     assert response.status_code == 403
-    assert response.json() == {"detail": "La sesión pertenece a otro usuario"}
+    assert response.json() == {"error": "Acceso denegado", "detail": "La sesión pertenece a otro usuario"}
 
 
 def test_run_without_token_returns_401(env: Env) -> None:
@@ -138,7 +138,7 @@ def test_run_without_token_returns_401(env: Env) -> None:
     response = TestClient(app).post("/agents/wallet", json=_run_input("s1"))
 
     assert response.status_code == 401
-    assert response.json() == {"detail": "Falta el token"}
+    assert response.json() == {"error": "No autenticado", "detail": "Falta el token"}
 
 
 def test_cors_allows_the_frontend_origin(client: TestClient) -> None:
