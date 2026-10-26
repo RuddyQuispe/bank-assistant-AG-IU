@@ -21,8 +21,10 @@ class BankState(MessagesState):
     sources: NotRequired[list[Source]]
     tool_results: NotRequired[list[ToolResult]]
     response: NotRequired[str]
-    # Resumen de mensajes antiguos, usado al compactar la sesión
-    summary: NotRequired[str]
+    # TODO(compactación, release futura): resumen de mensajes antiguos de la sesión.
+    #  No se compacta en cada envío al grafo: solo cuando el usuario lo pida o cuando
+    #  el historial llene el contexto del modelo. Descomentar al implementar ese flujo.
+    # summary: NotRequired[str]
 
 
 class IngestUpdate(TypedDict):
