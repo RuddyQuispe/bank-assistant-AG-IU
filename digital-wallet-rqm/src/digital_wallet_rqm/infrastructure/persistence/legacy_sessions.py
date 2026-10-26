@@ -1,14 +1,18 @@
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 
 from langchain_core.messages import BaseMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from digital_wallet_rqm.domain.models.chat_session import build_title
 from digital_wallet_rqm.infrastructure.persistence.database import session_factory
 from digital_wallet_rqm.infrastructure.persistence.entities import SessionRecord
+
+logger = logging.getLogger(__name__)
 
 # Clave de metadata donde la versión anterior guardaba el dueño de cada checkpoint
 LEGACY_OWNER_KEY = "user_id"
@@ -51,7 +55,9 @@ async def import_legacy_sessions(engine: AsyncEngine, checkpointer: BaseCheckpoi
         else:
             thread.created_at = min(thread.created_at, moment)
 
-    if threads:
+    if not threads:
+        return 0
+    try:
         async with sessions.begin() as db:
             db.add_all(
                 SessionRecord(
@@ -63,4 +69,9 @@ async def import_legacy_sessions(engine: AsyncEngine, checkpointer: BaseCheckpoi
                 )
                 for thread_id, thread in threads.items()
             )
+    except SQLAlchemyError:
+        # Una falla aquí no debe impedir que la app arranque: las sesiones viejas quedan sin importar
+        # y se reintenta en el próximo arranque
+        logger.exception("No se pudieron importar %d sesiones legacy", len(threads))
+        return 0
     return len(threads)

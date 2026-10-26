@@ -15,8 +15,9 @@ class SessionRecord(Base):
 
     __tablename__ = "sessions"
 
-    session_id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(64))
+    # Sin largo fijo: las sesiones anteriores a esta tabla tienen ids elegidos por el cliente, de cualquier largo
+    session_id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String)
     title: Mapped[str | None] = mapped_column(String(TITLE_MAX_LENGTH))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

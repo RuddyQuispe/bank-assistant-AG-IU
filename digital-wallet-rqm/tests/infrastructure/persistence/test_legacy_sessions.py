@@ -9,10 +9,12 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from digital_wallet_rqm.infrastructure.persistence.checkpointer import get_checkpointer
 from digital_wallet_rqm.infrastructure.persistence.database import database_url, get_engine
+from digital_wallet_rqm.infrastructure.persistence.entities import SessionRecord
 from digital_wallet_rqm.infrastructure.persistence.legacy_sessions import import_legacy_sessions
 from digital_wallet_rqm.infrastructure.persistence.repositories import SqlSessionRepository
 
@@ -90,3 +92,30 @@ async def test_imported_session_is_listed_for_its_owner_only(env: Env) -> None:
     repository = SqlSessionRepository(engine)
     assert [session.session_id for session in await repository.list_for_user("1")] == ["de-ruddy"]
     assert [session.session_id for session in await repository.list_for_user("2")] == ["de-otro"]
+
+
+async def test_ids_of_any_length_are_imported(env: Env) -> None:
+    # Antes el cliente elegía el id sin límite: las columnas no pueden tener largo fijo (Postgres lo exige)
+    checkpointer, engine, graph = env
+    long_id = "copilotkit-thread-" + "x" * 80
+    await _legacy_chat(graph, long_id, "hola", "1")
+
+    assert await import_legacy_sessions(engine, checkpointer) == 1
+    assert await SqlSessionRepository(engine).find(long_id) is not None
+    assert SessionRecord.__table__.c.session_id.type.length is None
+    assert SessionRecord.__table__.c.user_id.type.length is None
+
+
+async def test_database_error_is_logged_and_does_not_stop_startup(
+    env: Env, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    checkpointer, engine, graph = env
+    await _legacy_chat(graph, "legacy-1", "hola", "1")
+
+    def _fail(self: AsyncSession, instances: object) -> None:
+        raise SQLAlchemyError("value too long for type character varying(36)")
+
+    monkeypatch.setattr(AsyncSession, "add_all", _fail)
+
+    assert await import_legacy_sessions(engine, checkpointer) == 0
+    assert "legacy" in caplog.text.lower()
