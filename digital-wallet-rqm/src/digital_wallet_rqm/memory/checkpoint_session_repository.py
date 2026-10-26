@@ -13,11 +13,13 @@ class CheckpointSessionRepository(SessionRepository):
         self.checkpointer = checkpointer
 
     async def find_owner(self, session_id: str) -> str | None:
-        latest = self.checkpointer.alist({"configurable": {"thread_id": session_id}}, limit=1)
-        async for checkpoint in latest:
-            # Sesiones antiguas sin dueño devuelven "": no coinciden con nadie
-            return str(checkpoint.metadata.get(OWNER_KEY, ""))
-        return None
+        # aget_tuple y no alist(limit=1): cortar un "async for" sobre alist deja abierto su cursor y
+        # su lock hasta que lo cierra el recolector, a veces después de cerrar la conexión
+        latest = await self.checkpointer.aget_tuple({"configurable": {"thread_id": session_id}})
+        if latest is None:
+            return None
+        # Sesiones antiguas sin dueño devuelven "": no coinciden con nadie
+        return str(latest.metadata.get(OWNER_KEY, ""))
 
     async def list_for_user(self, user_id: str) -> list[str]:
         # Hay un checkpoint por paso del grafo, por eso se eliminan duplicados
