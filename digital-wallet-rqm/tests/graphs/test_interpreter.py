@@ -10,12 +10,11 @@ from digital_wallet_rqm.graphs.nodes.interpreter import node_interpreter
 def _patch_llm(monkeypatch: pytest.MonkeyPatch, reply: str = "respuesta final") -> dict[str, str]:
     received: dict[str, str] = {}
 
-    def _capture(prompt: PromptValue) -> str:
+    def _capture(prompt: PromptValue) -> AIMessage:
         received["human"] = prompt.to_messages()[-1].text
-        return reply
+        return AIMessage(content=reply, id="llm-message")
 
-    def fake_get_llm(temperature: float, response_format: type[str]) -> RunnableLambda[PromptValue, str]:
-        assert response_format is str
+    def fake_get_llm(temperature: float) -> RunnableLambda[PromptValue, AIMessage]:
         return RunnableLambda(_capture)
 
     monkeypatch.setattr(interpreter, "get_llm", fake_get_llm)
@@ -83,4 +82,17 @@ def test_returns_response_and_appends_it_to_messages(monkeypatch: pytest.MonkeyP
 
     result = node_interpreter(state)
 
-    assert result == {"response": "Tienes 1,500.50 MXN", "messages": [AIMessage(content="Tienes 1,500.50 MXN")]}
+    assert result == {
+        "response": "Tienes 1,500.50 MXN",
+        "messages": [AIMessage(content="Tienes 1,500.50 MXN", id="llm-message")],
+    }
+
+
+def test_appends_the_llm_message_itself_so_the_stream_id_matches(monkeypatch: pytest.MonkeyPatch) -> None:
+    # AG-UI streamea los tokens con el id del mensaje del LLM; un AIMessage nuevo tendría otro id
+    _patch_llm(monkeypatch)
+    state = {"messages": [HumanMessage(content="hola")], "question": "hola", "route": "analyst"}
+
+    result = node_interpreter(state)
+
+    assert result["messages"][0].id == "llm-message"

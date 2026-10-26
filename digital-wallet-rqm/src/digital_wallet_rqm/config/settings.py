@@ -16,6 +16,10 @@ class LangChainSettings:
     DOCS_ENABLED: bool = os.getenv("DOCS_ENABLED", "true").lower() == "true"
     SCALAR_PATH: str = os.getenv("SCALAR_PATH", "/scalar")
     SCALAR_THEME: str = os.getenv("SCALAR_THEME", "default")
+    # CORS: orígenes del frontend separados por coma (Vite usa el puerto 5173 por defecto)
+    FRONTEND_ORIGINS: list[str] = [
+        origin.strip() for origin in os.getenv("FRONTEND_ORIGINS", "http://localhost:5173").split(",") if origin.strip()
+    ]
     CHAT_MODEL: str = os.getenv("GEMINI_CHAT_MODEL")
     EMBEDDING_MODEL: str = os.getenv("GEMINI_EMBEDDING_MODEL")
     DEFAULT_TEMPERATURE: float | int = 0.7

@@ -31,11 +31,11 @@ def interpreter_input(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """Fakes every LLM; returns the human prompts the interpreter received"""
     received: list[str] = []
 
-    def _answer(prompt: PromptValue) -> str:
+    def _answer(prompt: PromptValue) -> AIMessage:
         received.append(prompt.to_messages()[-1].text)
-        return f"respuesta {len(received)}"
+        return AIMessage(content=f"respuesta {len(received)}")
 
-    monkeypatch.setattr(interpreter, "get_llm", lambda temperature, response_format: RunnableLambda(_answer))
+    monkeypatch.setattr(interpreter, "get_llm", lambda temperature: RunnableLambda(_answer))
     monkeypatch.setattr(tools, "get_llm", lambda temperature: _FakeToolsLLM())
     return received
 

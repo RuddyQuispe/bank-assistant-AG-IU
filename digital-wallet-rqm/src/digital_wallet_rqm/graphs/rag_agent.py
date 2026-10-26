@@ -15,6 +15,9 @@ from digital_wallet_rqm.graphs.state.bank_state import BankState
 # Entrada: solo "messages" (el nodo ingest deriva "question"); salida: el estado completo
 RagAgent = CompiledStateGraph[BankState, GraphContext, MessagesState, BankState]
 
+# Metadata de nodos internos: CopilotKit no envía al chat lo que generan sus LLM (ruteo, consulta, tools)
+HIDDEN_FROM_CHAT = {"copilotkit:emit-messages": False, "copilotkit:emit-tool-calls": False}
+
 
 def decide_route_node_path(state: BankState) -> Literal["retrieve", "tools", "interpreter"]:
     """Router de la arista condicional (no es un nodo: no modifica el estado)."""
@@ -30,9 +33,9 @@ def build_rag_agent(checkpointer: BaseCheckpointSaver[str] | None = None) -> Rag
     """Compila el grafo; el vector store llega por context=GraphContext(...) en cada invoke."""
     builder = StateGraph(BankState, context_schema=GraphContext, input_schema=MessagesState)
     builder.add_node("ingest", node_ingest)
-    builder.add_node("analyzer", node_analyzer)
-    builder.add_node("retrieve", node_retrieve)
-    builder.add_node("tools", node_tools)
+    builder.add_node("analyzer", node_analyzer, metadata=HIDDEN_FROM_CHAT)
+    builder.add_node("retrieve", node_retrieve, metadata=HIDDEN_FROM_CHAT)
+    builder.add_node("tools", node_tools, metadata=HIDDEN_FROM_CHAT)
     builder.add_node("interpreter", node_interpreter)
 
     builder.add_edge(START, "ingest")

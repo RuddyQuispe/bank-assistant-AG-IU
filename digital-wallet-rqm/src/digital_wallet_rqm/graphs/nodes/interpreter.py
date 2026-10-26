@@ -1,5 +1,3 @@
-from langchain_core.messages import AIMessage
-
 from digital_wallet_rqm.config.settings import settings
 from digital_wallet_rqm.core.llm_model import get_llm
 from digital_wallet_rqm.graphs.prompts.interpreter_prompt import INTERPRETER_PROMPT
@@ -28,11 +26,13 @@ def _format_information(state: BankState) -> str:
 
 def node_interpreter(state: BankState) -> InterpreterUpdate:
     """Redacta la respuesta final del agente con la información de la ruta"""
-    chain = INTERPRETER_PROMPT | get_llm(temperature=settings.DEFAULT_TEMPERATURE, response_format=str)
-    response = chain.invoke({
+    # Sin StrOutputParser: se guarda el mismo mensaje del LLM, así el id coincide con el que streamea AG-UI
+    chain = INTERPRETER_PROMPT | get_llm(temperature=settings.DEFAULT_TEMPERATURE)
+    message = chain.invoke({
         "history": format_recent_context(state["messages"]) or "Sin contexto previo",
         "information": _format_information(state),
         "question": state["question"],
     })
+    response = message.text
     print(f"[interpreter]: route={state.get("route")} -> {len(response)} chars")
-    return {"response": response, "messages": [AIMessage(content=response)]}
+    return {"response": response, "messages": [message]}
