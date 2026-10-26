@@ -36,6 +36,13 @@ Las reglas 1 y 5 las verifica `tests/test_architecture.py`.
 modifica columnas existentes**. Cuando haya que cambiar una tabla existente, pasar a Alembic
 (el equivalente de Flyway o Liquibase).
 
+## Sesiones anteriores a la tabla `sessions`
+
+Antes de la tabla, el dueño de cada sesión viajaba en la metadata de los checkpoints de LangGraph.
+Al arrancar, `infrastructure/persistence/legacy_sessions.py` crea la fila de `sessions` para esas sesiones (dueño,
+título de la primera pregunta y fechas de sus checkpoints). Es idempotente y no toca las filas que ya
+existen. Los checkpoints sin dueño no se importan: tampoco eran accesibles antes.
+
 ## Fuera de estas reglas
 
 - Tablas del checkpointer de LangGraph (`checkpoints`, `writes`; en Postgres también `checkpoint_blobs`

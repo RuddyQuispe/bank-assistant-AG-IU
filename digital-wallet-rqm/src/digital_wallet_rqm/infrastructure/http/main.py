@@ -16,6 +16,7 @@ from digital_wallet_rqm.infrastructure.http.routers import agui_router, auth_rou
 from digital_wallet_rqm.infrastructure.http.schemas.error_schema import VALIDATION_ERROR_RESPONSE
 from digital_wallet_rqm.infrastructure.persistence.checkpointer import get_checkpointer
 from digital_wallet_rqm.infrastructure.persistence.database import get_engine
+from digital_wallet_rqm.infrastructure.persistence.legacy_sessions import import_legacy_sessions
 from digital_wallet_rqm.infrastructure.persistence.repositories import DemoUserRepository, SqlSessionRepository
 from digital_wallet_rqm.infrastructure.security.jwt_token_service import JwtTokenService
 from digital_wallet_rqm.infrastructure.vectorstore.document_indexer import DocumentIndexer
@@ -33,6 +34,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Las conexiones se abren una sola vez y se cierran al salir del "async with":
     # el checkpointer (tablas de LangGraph) y el engine de la tabla propia "sessions", en la misma base
     async with get_checkpointer() as checkpointer, get_engine() as engine:
+        # Sesiones guardadas antes de la tabla "sessions" (dueño en la metadata del checkpoint): se les crea
+        # la fila para que sigan accesibles. Idempotente: en los siguientes arranques no hace nada
+        await import_legacy_sessions(engine, checkpointer)
         # Una sola instancia del vector store, compartida por el chat y el indexador
         vector_store = get_or_create_vector_store(settings.CHROMA_COLLECTION)
 
