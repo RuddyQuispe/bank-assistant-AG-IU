@@ -1,14 +1,17 @@
 # Persistencia
 
-Las tablas propias del proyecto se manejan con **SQLAlchemy 2.0 ORM** (el equivalente de JPA/Hibernate),
-en el paquete `src/digital_wallet_rqm/persistence/`.
+Toda la persistencia vive en `src/digital_wallet_rqm/infrastructure/persistence/` (ver
+[architecture.md](architecture.md)):
 
 ```
-persistence/
-  database.py        engine, URL, fábrica de sesiones, creación de tablas, ajustes de SQLite
+infrastructure/persistence/
+  checkpointer.py    historial de cada sesión: checkpointer de LangGraph (sus tablas las maneja LangGraph)
+  database.py        tablas propias: engine, URL, fábrica de sesiones, creación de tablas, ajustes de SQLite
   entities/          entidades ORM (una clase por tabla)
-  repositories/      adaptadores que implementan los puertos de services/
+  repositories/      adaptadores que implementan los puertos de application/ports/outbound/
 ```
+
+Las tablas propias se manejan con **SQLAlchemy 2.0 ORM** (el equivalente de JPA/Hibernate).
 
 ## Reglas
 
@@ -20,12 +23,12 @@ persistence/
 3. **Las entidades no salen del repositorio.** El repositorio las convierte al modelo de dominio
    (`to_domain()`) antes de devolverlas.
 4. **Transacciones en el repositorio**, con `async with self._sessions.begin():`.
-5. **El ORM solo vive en `persistence/`.** Servicios, dominio y API dependen de los puertos
-   (`services/*_repository.py`), nunca de SQLAlchemy.
+5. **El ORM solo vive en `infrastructure/persistence/`.** Dominio, aplicación y API dependen de los
+   puertos (`application/ports/outbound/`), nunca de SQLAlchemy.
 6. **Entidad nueva:** crearla en `entities/` e importarla en `entities/__init__.py`. Si no se importa,
    `create_all` no crea su tabla.
 
-Las reglas 1 y 5 las verifica `tests/persistence/test_conventions.py`.
+Las reglas 1 y 5 las verifica `tests/test_architecture.py`.
 
 ## Esquema y migraciones
 

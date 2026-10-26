@@ -6,10 +6,16 @@ Asistente de banca móvil con RAG (LangGraph + Gemini) expuesto con FastAPI.
 
 ```bash
 uv sync
-uv run fastapi dev src/digital_wallet_rqm/api/main.py
+uv run fastapi dev src/digital_wallet_rqm/infrastructure/http/main.py
 ```
 
 Documentación interactiva en `/scalar` (contrato exportado en `docs/openapi.yaml`).
+
+## Estructura
+
+Arquitectura hexagonal en tres capas: `domain/` (negocio en Python puro), `application/` (casos de uso
+y puertos) e `infrastructure/` (FastAPI, LangGraph, SQLAlchemy, Chroma, Gemini). Qué hay en cada
+carpeta, cómo fluye una pregunta y dónde agregar cada cosa: [docs/architecture.md](docs/architecture.md).
 
 ## Endpoints
 

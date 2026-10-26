@@ -1,10 +1,10 @@
 """Exporta el OpenAPI que FastAPI genera desde el código a docs/openapi.yaml.
 
 Uso: uv run python scripts/export_openapi.py
-Correrlo después de cambiar un endpoint o un DTO; tests/api/test_openapi_docs.py avisa si quedó desactualizado.
+Correrlo después de cambiar un endpoint o un DTO; tests/infrastructure/http/test_openapi_docs.py avisa si quedó desactualizado.
 """
 
-from digital_wallet_rqm.api.openapi_export import OPENAPI_YAML_PATH, build_openapi_yaml
+from digital_wallet_rqm.infrastructure.http.openapi_export import OPENAPI_YAML_PATH, build_openapi_yaml
 
 
 def main() -> None:

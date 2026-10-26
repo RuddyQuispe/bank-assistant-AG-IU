@@ -626,7 +626,7 @@ components:
       - error
       - detail
       title: ErrorResponse
-      description: Cuerpo de todos los errores 4XX y 5XX (ver api/exceptions/handlers.py)
+      description: Cuerpo de todos los errores 4XX y 5XX (ver infrastructure/http/exception_handlers.py)
     FileSource:
       properties:
         type:
