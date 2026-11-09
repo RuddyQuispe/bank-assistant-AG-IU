@@ -46,15 +46,23 @@ def _ids(path: Path) -> str:
 @pytest.mark.parametrize("path", _python_files("domain"), ids=_ids)
 def test_domain_depends_on_nothing_else(path: Path) -> None:
     # El dominio es Python puro: ni otras capas, ni configuración, ni frameworks
-    forbidden = (f"{ROOT}.application", f"{ROOT}.infrastructure", f"{ROOT}.config", *FRAMEWORKS)
+    forbidden = (f"{ROOT}.application", f"{ROOT}.infrastructure", *FRAMEWORKS)
     assert _violations(path, forbidden) == []
 
 
 @pytest.mark.parametrize("path", _python_files("application"), ids=_ids)
 def test_application_depends_only_on_domain(path: Path) -> None:
     # Los casos de uso hablan con el exterior solo a través de sus puertos
-    forbidden = (f"{ROOT}.infrastructure", f"{ROOT}.config", *FRAMEWORKS)
+    forbidden = (f"{ROOT}.infrastructure", *FRAMEWORKS)
     assert _violations(path, forbidden) == []
+
+
+def test_outbound_adapters_do_not_depend_on_inbound() -> None:
+    # Lo saliente (LLM, base, vector store) no conoce a quién lo llama (REST, AG-UI)
+    files = _python_files("infrastructure/outbound")
+    assert files
+    violations = {_ids(path): _violations(path, (f"{ROOT}.infrastructure.inbound",)) for path in files}
+    assert {path: found for path, found in violations.items() if found} == {}
 
 
 @pytest.mark.parametrize("path", _python_files(""), ids=_ids)
@@ -65,7 +73,7 @@ def test_no_raw_sql_with_text(path: Path) -> None:
 
 @pytest.mark.parametrize(
     "path",
-    [path for path in _python_files("") if PACKAGE / "infrastructure" / "persistence" not in path.parents],
+    [path for path in _python_files("") if PACKAGE / "infrastructure" / "outbound" / "persistence" not in path.parents],
     ids=_ids,
 )
 def test_sqlalchemy_is_only_used_inside_persistence(path: Path) -> None:

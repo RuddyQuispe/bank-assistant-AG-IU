@@ -6,7 +6,7 @@ Asistente de banca móvil con RAG (LangGraph + Gemini) expuesto con FastAPI.
 
 ```bash
 uv sync
-uv run fastapi dev src/digital_wallet_rqm/infrastructure/http/main.py
+uv run fastapi dev src/digital_wallet_rqm/main.py
 ```
 
 Documentación interactiva en `/scalar` (contrato exportado en `docs/openapi.yaml`).

@@ -1,6 +1,6 @@
 from digital_wallet_rqm.domain.errors.base import AppError
 
-# Errores genéricos: cada uno corresponde a un status HTTP (ver infrastructure/http/exception_handlers.py)
+# Errores genéricos: cada uno corresponde a un status HTTP (ver infrastructure/inbound/exception_handlers.py)
 
 
 class BadRequestError(AppError):

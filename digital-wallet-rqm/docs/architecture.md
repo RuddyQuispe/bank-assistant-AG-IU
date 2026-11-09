@@ -45,33 +45,49 @@ reciben puertos, así que se testean con dobles en memoria (`tests/application/`
 
 ### `infrastructure/`: los adaptadores (detalles técnicos)
 
+La carpeta muestra hacia dónde va cada adaptador. **`inbound/` llama a la aplicación** y **`outbound/` es lo que la
+aplicación usa** a través de sus puertos. Lo saliente nunca importa lo entrante.
+
+**`inbound/`: lo que entra**
+
 | Carpeta | Qué adapta | Archivos principales |
 |---|---|---|
-| `http/` | FastAPI: la entrada REST y AG-UI | `main.py` (app y armado de dependencias), `routers/`, `schemas/` (DTOs Pydantic), `exception_handlers.py`, `agui/` |
+| `rest/` | Endpoints REST con FastAPI | `routers/`, `schemas/` (DTOs Pydantic) |
+| `agui/` | Protocolo AG-UI (streaming) | `agui_router.py`, `wallet_agui_adapter.py` |
+| (raíz) | Lo que comparten REST y AG-UI | `dependencies.py`, `exception_handlers.py`, `error_schema.py`, `openapi_export.py` |
+
+**`outbound/`: lo que sale**
+
+| Carpeta | Qué adapta | Archivos principales |
+|---|---|---|
 | `agent/` | LangGraph: el grafo RAG | `rag_agent.py` (grafo), `nodes/`, `prompts/`, `state/`, `tools/`, `langgraph_chat_agent.py` (implementa `ChatAgent`) |
-| `persistence/` | Toda la persistencia | `checkpointer.py` (historial, LangGraph), `database.py` + `entities/` + `repositories/` (tabla `sessions` con SQLAlchemy; `DemoUserRepository` con el usuario demo) |
+| `persistence/` | Toda la persistencia | `checkpointer.py` (historial, LangGraph), `database.py` + `entities/` + `repositories/` (SQLAlchemy, ver [persistence.md](persistence.md)) |
 | `llm/` | Gemini | `llm_model.py` (chat y embeddings) |
 | `vectorstore/` | Chroma y documentos | `vector_store.py`, `document_indexer.py`, `document_builder.py`, `document_loaders.py` |
 | `security/` | JWT (pyjwt) | `jwt_token_service.py` (implementa `TokenService`; todo el manejo de JWT vive aquí) |
 
-`config/settings.py` tiene la configuración leída del entorno.
+`infrastructure/settings.py` tiene la configuración leída del entorno.
+
+### `main.py`: el punto de arranque
+
+Crea la app de FastAPI y conecta los casos de uso con sus adaptadores (`lifespan`).
 
 ## Recorrido de una pregunta
 
 **REST, `POST /chat`:**
 
 ```
-http/routers/chat_router.py          recibe el DTO y el usuario del token
+inbound/rest/routers/chat_router.py          recibe el DTO y el usuario del token
   └─► application/chat_use_cases.py  valida la sesión (404/403) o crea una nueva
-        ├─► SessionRepository        ◄── persistence/repositories/sql_session_repository.py
-        └─► ChatAgent                ◄── agent/langgraph_chat_agent.py ──► grafo RAG + checkpointer
+        ├─► SessionRepository        ◄── outbound/persistence/repositories/sql_session_repository.py
+        └─► ChatAgent                ◄── outbound/agent/langgraph_chat_agent.py ──► grafo RAG + checkpointer
 ```
 
 **AG-UI, `POST /agents/wallet` (streaming):**
 
 ```
-http/routers/agui_router.py          valida la sesión con ChatService.start_run (404/403)
-  ├─► http/agui/wallet_agui_adapter.py   traduce el grafo RAG a eventos AG-UI (SSE)
+inbound/agui/agui_router.py          valida la sesión con ChatService.start_run (404/403)
+  ├─► inbound/agui/wallet_agui_adapter.py   traduce el grafo RAG a eventos AG-UI (SSE)
   └─► ChatService.finish_run             registra título y actividad si el run terminó bien
 ```
 
@@ -82,13 +98,13 @@ eventos del streaming.
 **Login, `POST /auth/token`:**
 
 ```
-http/routers/auth_router.py            recibe el nickname
+inbound/rest/routers/auth_router.py            recibe el nickname
   └─► application/auth_use_cases.py    si el usuario no existe: 401
-        ├─► UserRepository             ◄── persistence/repositories/demo_user_repository.py
-        └─► TokenService               ◄── security/jwt_token_service.py (pyjwt)
+        ├─► UserRepository             ◄── outbound/persistence/repositories/demo_user_repository.py
+        └─► TokenService               ◄── outbound/security/jwt_token_service.py (pyjwt)
 ```
 
-`get_current_user` (`http/dependencies.py`) usa el mismo caso de uso para leer el token de cada request.
+`get_current_user` (`inbound/dependencies.py`) usa el mismo caso de uso para leer el token de cada request.
 
 ## Puerto, caso de uso o adaptador
 
@@ -101,24 +117,24 @@ Un **caso de uso solo conoce puertos** y vive en `application/`. Por eso `auth_r
 | Necesito… | Va en |
 |---|---|
 | una regla de negocio nueva | `domain/` (si es un dato o regla pura) o `application/` (si coordina puertos) |
-| un endpoint | `infrastructure/http/routers/` + su DTO en `infrastructure/http/schemas/` |
-| una tabla | entidad en `infrastructure/persistence/entities/` + repositorio en `repositories/` + puerto en `application/ports/outbound/` (ver [persistence.md](persistence.md)) |
+| un endpoint | `infrastructure/inbound/rest/routers/` + su DTO en `infrastructure/inbound/rest/schemas/` |
+| una tabla | entidad en `infrastructure/outbound/persistence/entities/` + repositorio en `repositories/` + puerto en `application/ports/outbound/` (ver [persistence.md](persistence.md)) |
 | un error con su status HTTP | subclase en `domain/errors/errors.py` (el status lo resuelve `exception_handlers.py`) |
-| un nodo o una tool del agente | `infrastructure/agent/nodes/` o `infrastructure/agent/tools/` |
+| un nodo o una tool del agente | `infrastructure/outbound/agent/nodes/` o `infrastructure/outbound/agent/tools/` |
 
 ## Equivalencias con Spring Boot
 
 | Spring Boot | Aquí |
 |---|---|
-| `@RestController` | `infrastructure/http/routers/*` |
-| DTO | `infrastructure/http/schemas/*` (Pydantic) |
-| `@RestControllerAdvice` | `infrastructure/http/exception_handlers.py` |
+| `@RestController` | `infrastructure/inbound/rest/routers/*` |
+| DTO | `infrastructure/inbound/rest/schemas/*` (Pydantic) |
+| `@RestControllerAdvice` | `infrastructure/inbound/exception_handlers.py` |
 | `@Service` | `application/chat_use_cases.py` |
 | `interface` del servicio o del repositorio | `application/ports/` |
-| `@Repository` + `@Entity` | `infrastructure/persistence/repositories/` + `entities/` |
-| configuración de beans | `lifespan` en `infrastructure/http/main.py` |
+| `@Repository` + `@Entity` | `infrastructure/outbound/persistence/repositories/` + `entities/` |
+| configuración de beans | `lifespan` en `main.py` |
 
 ## Tests
 
 `tests/` repite la misma estructura que `src/`: `tests/domain/`, `tests/application/` y
-`tests/infrastructure/<adaptador>/`. `tests/test_architecture.py` verifica las reglas de este documento.
+`tests/infrastructure/inbound/` y `tests/infrastructure/outbound/`. `tests/test_architecture.py` verifica las reglas de este documento.

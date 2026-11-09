@@ -1,10 +1,10 @@
 # Persistencia
 
-Toda la persistencia vive en `src/digital_wallet_rqm/infrastructure/persistence/` (ver
+Toda la persistencia vive en `src/digital_wallet_rqm/infrastructure/outbound/persistence/` (ver
 [architecture.md](architecture.md)):
 
 ```
-infrastructure/persistence/
+infrastructure/outbound/persistence/
   checkpointer.py    historial de cada sesión: checkpointer de LangGraph (sus tablas las maneja LangGraph)
   database.py        tablas propias: engine, URL, fábrica de sesiones, creación de tablas, ajustes de SQLite
   entities/          entidades ORM (una clase por tabla)
@@ -23,7 +23,7 @@ Las tablas propias se manejan con **SQLAlchemy 2.0 ORM** (el equivalente de JPA/
 3. **Las entidades no salen del repositorio.** El repositorio las convierte al modelo de dominio
    (`to_domain()`) antes de devolverlas.
 4. **Transacciones en el repositorio**, con `async with self._sessions.begin():`.
-5. **El ORM solo vive en `infrastructure/persistence/`.** Dominio, aplicación y API dependen de los
+5. **El ORM solo vive en `infrastructure/outbound/persistence/`.** Dominio, aplicación y API dependen de los
    puertos (`application/ports/outbound/`), nunca de SQLAlchemy.
 6. **Entidad nueva:** crearla en `entities/` e importarla en `entities/__init__.py`. Si no se importa,
    `create_all` no crea su tabla.
@@ -39,7 +39,7 @@ modifica columnas existentes**. Cuando haya que cambiar una tabla existente, pas
 ## Sesiones anteriores a la tabla `sessions`
 
 Antes de la tabla, el dueño de cada sesión viajaba en la metadata de los checkpoints de LangGraph.
-Al arrancar, `infrastructure/persistence/legacy_sessions.py` crea la fila de `sessions` para esas sesiones (dueño,
+Al arrancar, `infrastructure/outbound/persistence/legacy_sessions.py` crea la fila de `sessions` para esas sesiones (dueño,
 título de la primera pregunta y fechas de sus checkpoints). Es idempotente y no toca las filas que ya
 existen. Los checkpoints sin dueño no se importan: tampoco eran accesibles antes.
 

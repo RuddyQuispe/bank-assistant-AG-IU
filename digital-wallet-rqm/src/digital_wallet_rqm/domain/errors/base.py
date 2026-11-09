@@ -2,7 +2,7 @@ class AppError(Exception):
     """Base de los errores de la aplicación.
 
     El dominio y los servicios lanzan estas excepciones sin conocer HTTP; el adaptador HTTP
-    (infrastructure/http/exception_handlers.py) decide el status, como un @RestControllerAdvice de Spring.
+    (infrastructure/inbound/exception_handlers.py) decide el status, como un @RestControllerAdvice de Spring.
     La respuesta es {"error": error, "detail": detail}.
     """
 
