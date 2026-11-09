@@ -41,3 +41,9 @@ class ChatUseCases(ChatService):
         # y borrarla de nuevo termina el trabajo
         await self.agent.forget(session_id)
         await self.sessions.delete(session_id)
+
+    async def start_run(self, user: CurrentUser, session_id: str) -> None:
+        await self.sessions.get_owned(user, session_id)
+
+    async def finish_run(self, session_id: str, question: str) -> None:
+        await self.sessions.record_question(session_id, question)

@@ -183,3 +183,36 @@ async def test_session_of_another_user_is_forbidden(chat: ChatUseCases, agent: F
     # La sesión ajena queda intacta
     assert agent.calls == []
     assert [m.content for m in await chat.get_history(OTHER, theirs.session_id)] == ["secreto", "eco: secreto"]
+
+
+async def test_start_run_accepts_an_own_session(chat: ChatUseCases) -> None:
+    session = await chat.create_session(RUDDY)
+
+    await chat.start_run(RUDDY, session.session_id)
+
+    # Abrir un run no es actividad: el título llega recién con finish_run
+    [listed] = await chat.list_sessions(RUDDY)
+    assert listed == session
+
+
+async def test_start_run_with_unknown_session_is_not_found(chat: ChatUseCases) -> None:
+    with pytest.raises(SessionNotFoundError):
+        await chat.start_run(RUDDY, "inventada")
+
+
+async def test_start_run_on_another_users_session_is_forbidden(chat: ChatUseCases) -> None:
+    theirs = await chat.create_session(OTHER)
+
+    with pytest.raises(SessionForbiddenError):
+        await chat.start_run(RUDDY, theirs.session_id)
+
+
+async def test_finish_run_titles_the_session_with_the_first_question(chat: ChatUseCases) -> None:
+    session = await chat.create_session(RUDDY)
+
+    await chat.finish_run(session.session_id, "¿Cuánto cuesta un SPEI?")
+    await chat.finish_run(session.session_id, "gracias")
+
+    [listed] = await chat.list_sessions(RUDDY)
+    assert listed.title == "¿Cuánto cuesta un SPEI?"
+    assert listed.updated_at > session.updated_at

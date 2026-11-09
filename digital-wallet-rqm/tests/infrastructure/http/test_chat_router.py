@@ -54,6 +54,12 @@ class FakeChatService(ChatService):
         self._check(session_id)
         self.deleted.append(session_id)
 
+    async def start_run(self, user: CurrentUser, session_id: str) -> None:
+        self._check(session_id)
+
+    async def finish_run(self, session_id: str, question: str) -> None:
+        pass
+
 
 @pytest.fixture
 def fake_service() -> Iterator[FakeChatService]:

@@ -48,14 +48,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         #     document_indexer.sync()
 
         app.state.document_indexer = document_indexer
-        # Grafo, sesiones y vector store se comparten entre el chat REST y el adaptador AG-UI
+        # Grafo y vector store se comparten entre el chat REST y el adaptador AG-UI
         app.state.rag_agent = build_rag_agent(checkpointer)
-        app.state.session_repository = SqlSessionRepository(engine)
         app.state.vector_store = vector_store
-        # Caso de uso del chat REST: recibe los adaptadores a través de sus puertos
+        # Caso de uso del chat (REST y AG-UI): recibe los adaptadores a través de sus puertos
         app.state.chat_service = ChatUseCases(
             agent=LangGraphChatAgent(app.state.rag_agent, checkpointer, vector_store),
-            sessions=app.state.session_repository,
+            sessions=SqlSessionRepository(engine),
         )
         yield
 

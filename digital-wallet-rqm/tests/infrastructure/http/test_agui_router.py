@@ -14,7 +14,10 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.runtime import Runtime
 
 from digital_wallet_rqm.application.auth_use_cases import AuthUseCases
+from digital_wallet_rqm.application.chat_use_cases import ChatUseCases
+from digital_wallet_rqm.application.ports.outbound.chat_agent import ChatAgent
 from digital_wallet_rqm.application.ports.outbound.session_repository import SessionRepository
+from digital_wallet_rqm.domain.models.chat import ChatMessage
 from digital_wallet_rqm.domain.models.chat_session import ChatSession, build_title
 from digital_wallet_rqm.domain.models.current_user import CurrentUser
 from digital_wallet_rqm.infrastructure.agent.context import GraphContext
@@ -22,9 +25,9 @@ from digital_wallet_rqm.infrastructure.agent.rag_agent import HIDDEN_FROM_CHAT
 from digital_wallet_rqm.infrastructure.agent.state.bank_state import BankState
 from digital_wallet_rqm.infrastructure.http.dependencies import (
     get_auth_service,
+    get_chat_service,
     get_current_user,
     get_rag_agent,
-    get_session_repository,
     get_vector_store,
 )
 from digital_wallet_rqm.infrastructure.http.main import app
@@ -59,6 +62,19 @@ class InMemorySessionRepository(SessionRepository):
 
     async def delete(self, session_id: str) -> None:
         self.sessions.pop(session_id, None)
+
+
+class UnusedChatAgent(ChatAgent):
+    """El run de AG-UI corre el grafo directamente: el puerto ChatAgent no debe usarse aquí"""
+
+    async def answer(self, question: str, session_id: str, user: CurrentUser) -> str:
+        raise NotImplementedError
+
+    async def history(self, session_id: str) -> list[ChatMessage]:
+        raise NotImplementedError
+
+    async def forget(self, session_id: str) -> None:
+        raise NotImplementedError
 
 
 def _hidden_node(state: BankState) -> dict[str, Any]:
@@ -103,7 +119,8 @@ class Env:
 def env() -> Iterator[Env]:
     environment = Env()
     app.dependency_overrides[get_rag_agent] = lambda: environment.graph
-    app.dependency_overrides[get_session_repository] = lambda: environment.sessions
+    chat_service = ChatUseCases(agent=UnusedChatAgent(), sessions=environment.sessions)
+    app.dependency_overrides[get_chat_service] = lambda: chat_service
     app.dependency_overrides[get_vector_store] = lambda: InMemoryVectorStore(DeterministicFakeEmbedding(size=8))
     yield environment
     app.dependency_overrides.clear()

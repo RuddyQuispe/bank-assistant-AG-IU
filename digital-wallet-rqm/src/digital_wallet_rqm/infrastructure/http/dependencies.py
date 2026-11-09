@@ -4,7 +4,6 @@ from langchain_core.vectorstores import VectorStore
 
 from digital_wallet_rqm.application.ports.inbound.auth_service import AuthService
 from digital_wallet_rqm.application.ports.inbound.chat_service import ChatService
-from digital_wallet_rqm.application.ports.outbound.session_repository import SessionRepository
 from digital_wallet_rqm.domain.errors import UnauthorizedError
 from digital_wallet_rqm.domain.models.current_user import CurrentUser
 from digital_wallet_rqm.infrastructure.agent.rag_agent import RagAgent
@@ -24,12 +23,6 @@ def get_rag_agent(request: Request) -> RagAgent:
     """Entrega el grafo compilado al arrancar la app (lo usa el adaptador AG-UI)"""
     agent: RagAgent = request.app.state.rag_agent
     return agent
-
-
-def get_session_repository(request: Request) -> SessionRepository:
-    """Entrega el repositorio de sesiones creado al arrancar la app"""
-    sessions: SessionRepository = request.app.state.session_repository
-    return sessions
 
 
 def get_vector_store(request: Request) -> VectorStore:

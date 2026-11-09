@@ -6,15 +6,15 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.vectorstores import VectorStore
 
-from digital_wallet_rqm.application.ports.outbound.session_repository import SessionRepository
+from digital_wallet_rqm.application.ports.inbound.chat_service import ChatService
 from digital_wallet_rqm.domain.models.current_user import CurrentUser
 from digital_wallet_rqm.infrastructure.agent.context import GraphContext
 from digital_wallet_rqm.infrastructure.agent.rag_agent import RagAgent
 from digital_wallet_rqm.infrastructure.http.agui.wallet_agui_adapter import AGENT_NAME, WalletAGUIAdapter
 from digital_wallet_rqm.infrastructure.http.dependencies import (
+    get_chat_service,
     get_current_user,
     get_rag_agent,
-    get_session_repository,
     get_vector_store,
 )
 from digital_wallet_rqm.infrastructure.http.schemas.error_schema import (
@@ -38,14 +38,14 @@ async def run_wallet_agent(
     request: Request,
     user: CurrentUser = Depends(get_current_user),
     agent: RagAgent = Depends(get_rag_agent),
-    sessions: SessionRepository = Depends(get_session_repository),
+    service: ChatService = Depends(get_chat_service),
     vector_store: VectorStore = Depends(get_vector_store),
 ) -> StreamingResponse:
     """`threadId` es una sesión creada antes con `POST /chat/sessions` (el id lo asigna el servidor).
 
     Si no existe responde 404 y si es de otro usuario, 403, antes de abrir el stream.
     """
-    await sessions.get_owned(user, input_data.thread_id)
+    await service.start_run(user, input_data.thread_id)
 
     adapter = WalletAGUIAdapter(graph=agent, context=GraphContext(vector_store=vector_store, user=user))
     encoder = EventEncoder(accept=request.headers.get("accept", "text/event-stream"))
@@ -59,7 +59,7 @@ async def run_wallet_agent(
             yield encoder.encode(event)
         # Igual que en /chat: título y actividad solo si el run terminó bien
         if finished and question:
-            await sessions.record_question(input_data.thread_id, question)
+            await service.finish_run(input_data.thread_id, question)
 
     return StreamingResponse(events(), media_type=encoder.get_content_type())
 

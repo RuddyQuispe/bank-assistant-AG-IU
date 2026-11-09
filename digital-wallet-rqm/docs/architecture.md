@@ -70,12 +70,14 @@ http/routers/chat_router.py          recibe el DTO y el usuario del token
 **AG-UI, `POST /agents/wallet` (streaming):**
 
 ```
-http/routers/agui_router.py          valida la sesión con SessionRepository (404/403)
-  └─► http/agui/wallet_agui_adapter.py   traduce el grafo RAG a eventos AG-UI (SSE)
+http/routers/agui_router.py          valida la sesión con ChatService.start_run (404/403)
+  ├─► http/agui/wallet_agui_adapter.py   traduce el grafo RAG a eventos AG-UI (SSE)
+  └─► ChatService.finish_run             registra título y actividad si el run terminó bien
 ```
 
-El adaptador AG-UI usa el grafo directamente y no pasa por `ChatUseCases`. Es una decisión explícita:
-la librería `ag-ui-langgraph` necesita el grafo compilado para emitir los eventos del streaming.
+Las reglas de sesión pasan por `ChatUseCases`, igual que en REST. El grafo no pasa por el puerto `ChatAgent`,
+y es una decisión explícita: la librería `ag-ui-langgraph` necesita el grafo compilado para emitir los
+eventos del streaming.
 
 **Login, `POST /auth/token`:**
 
