@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from langchain_core.embeddings import DeterministicFakeEmbedding
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
+from langchain_core.tools import tool
 from langchain_core.vectorstores import InMemoryVectorStore
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, MessagesState, StateGraph
@@ -88,6 +89,18 @@ def _answer_node(state: BankState, runtime: Runtime[GraphContext]) -> dict[str, 
     user = runtime.context.user
     llm = GenericFakeChatModel(messages=iter([AIMessage(content=f"hola {user.nickname if user else '?'}")]))
     return {"messages": [llm.invoke("x")]}
+
+
+@tool
+def _lookup() -> str:
+    """Tool de prueba"""
+    return "dato interno"
+
+
+def _tool_node(state: BankState) -> dict[str, Any]:
+    # Simula el nodo tools: ejecuta la tool con un ToolCall completo, como hace node_tools
+    _lookup.invoke({"type": "tool_call", "id": "call-1", "name": _lookup.name, "args": {}})
+    return {}
 
 
 def _failing_node(state: BankState) -> dict[str, Any]:
@@ -177,6 +190,24 @@ def test_finished_run_records_the_question_for_the_title(client: TestClient, env
     client.post("/agents/wallet", json=_run_input("s1", "¿Cuánto cuesta\nun SPEI?"))
 
     assert env.sessions.questions == [("s1", "¿Cuánto cuesta un SPEI?")]
+
+
+def _tool_call_types(client: TestClient) -> list[str]:
+    events = _events(client.post("/agents/wallet", json=_run_input("s1")).text)
+    calls = {"TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END"}
+    return [event["type"] for event in events if event["type"] in calls]
+
+
+def test_tool_call_of_a_hidden_node_does_not_reach_the_stream(client: TestClient, env: Env) -> None:
+    env.graph = _build_graph((_tool_node, HIDDEN_FROM_CHAT), (_answer_node, None))
+
+    assert _tool_call_types(client) == []
+
+
+def test_tool_call_of_a_visible_node_reaches_the_stream(client: TestClient, env: Env) -> None:
+    env.graph = _build_graph((_tool_node, None), (_answer_node, None))
+
+    assert _tool_call_types(client) == ["TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END"]
 
 
 def test_failed_run_ends_with_run_error_and_records_nothing(client: TestClient, env: Env) -> None:

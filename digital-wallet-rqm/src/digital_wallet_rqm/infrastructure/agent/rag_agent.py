@@ -15,8 +15,8 @@ from digital_wallet_rqm.infrastructure.agent.state.bank_state import BankState
 # Entrada: solo "messages" (el nodo ingest deriva "question"); salida: el estado completo
 RagAgent = CompiledStateGraph[BankState, GraphContext, MessagesState, BankState]
 
-# Metadata de nodos internos: CopilotKit no envía al chat lo que generan sus LLM (ruteo, consulta, tools)
-HIDDEN_FROM_CHAT = {"copilotkit:emit-messages": False, "copilotkit:emit-tool-calls": False}
+# Metadata de nodos internos: AG-UI no emite el texto ni las tool calls de sus LLM (ruteo, consulta, tools)
+HIDDEN_FROM_CHAT = {"emit-messages": False, "emit-tool-calls": False}
 
 
 def decide_route_node_path(state: BankState) -> Literal["retrieve", "tools", "interpreter"]:

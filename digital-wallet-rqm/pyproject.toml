@@ -24,7 +24,6 @@ dependencies = [
     "pyyaml>=6.0.3",
     "scalar-fastapi>=1.9.1",
     "ag-ui-langgraph==0.0.47",
-    "copilotkit==0.1.96",
     "aiosqlite==0.22.1",
 ]
 

@@ -23,7 +23,7 @@ from digital_wallet_rqm.infrastructure.http.schemas.error_schema import (
     UNAUTHORIZED_RESPONSE,
 )
 
-# Adaptador AG-UI (protocolo de CopilotKit): mismo grafo que /chat, pero con respuesta en streaming (SSE)
+# Adaptador AG-UI: mismo grafo que /chat, pero con respuesta en streaming (SSE)
 router = APIRouter(
     prefix="/agents",
     tags=["agents"],
@@ -54,7 +54,7 @@ async def run_wallet_agent(
     async def events() -> AsyncIterator[str]:
         # Los errores del grafo llegan como evento RUN_ERROR: el status 200 ya se envió
         finished = False
-        async for event in adapter.events(input_data):
+        async for event in adapter.run(input_data):
             finished = finished or event.type == EventType.RUN_FINISHED
             yield encoder.encode(event)
         # Igual que en /chat: título y actividad solo si el run terminó bien

@@ -39,7 +39,7 @@ Las tablas propias se manejan con SQLAlchemy ORM: ver las reglas en [docs/persis
 ## Endpoint AG-UI
 
 `POST /agents/wallet` recibe un `RunAgentInput` de AG-UI. `threadId` es el id de una sesión creada
-antes con `POST /chat/sessions` (el mismo id que usa `/chat`). Lo consume un frontend con CopilotKit (`HttpAgent` de `@ag-ui/client`).
+antes con `POST /chat/sessions` (el mismo id que usa `/chat`). Lo consume un frontend con `HttpAgent` de `@ag-ui/client`.
 
 ```bash
 curl -N http://localhost:8000/agents/wallet \
