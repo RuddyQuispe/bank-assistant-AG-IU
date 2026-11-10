@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_core.runnables import Runnable, RunnableLambda
 from langchain_core.tools import BaseTool
 
-from digital_wallet_rqm.domain.models.current_user import CurrentUser
+from digital_wallet_rqm.domain.models import CurrentUser
 from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
 from digital_wallet_rqm.infrastructure.outbound.agent.nodes import tools
 from digital_wallet_rqm.infrastructure.outbound.agent.nodes.tools import node_tools

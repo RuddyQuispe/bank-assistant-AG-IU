@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from sqlalchemy import DateTime, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from digital_wallet_rqm.domain.models.chat_session import TITLE_MAX_LENGTH, ChatSession
+from digital_wallet_rqm.domain.models import TITLE_MAX_LENGTH, ChatSession
 from digital_wallet_rqm.infrastructure.outbound.persistence.entities.base import Base
 
 

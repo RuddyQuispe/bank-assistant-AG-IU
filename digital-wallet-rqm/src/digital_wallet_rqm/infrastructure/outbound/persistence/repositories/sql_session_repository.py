@@ -5,7 +5,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from digital_wallet_rqm.application.ports.session_repository import SessionRepository
-from digital_wallet_rqm.domain.models.chat_session import ChatSession, build_title
+from digital_wallet_rqm.domain.models import ChatSession, build_title
 from digital_wallet_rqm.infrastructure.outbound.persistence.database import session_factory
 from digital_wallet_rqm.infrastructure.outbound.persistence.entities import SessionRecord
 

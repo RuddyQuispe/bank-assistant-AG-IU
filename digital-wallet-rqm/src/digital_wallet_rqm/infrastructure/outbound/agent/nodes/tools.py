@@ -1,7 +1,7 @@
 from langchain_core.messages import HumanMessage, SystemMessage, ToolCall
 from langgraph.runtime import Runtime
 
-from digital_wallet_rqm.domain.models.current_user import CurrentUser
+from digital_wallet_rqm.domain.models import CurrentUser
 from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
 from digital_wallet_rqm.infrastructure.outbound.agent.prompts.tools_prompt import TOOLS_SYSTEM_PROMPT
 from digital_wallet_rqm.infrastructure.outbound.agent.state.bank_state import BankState, ToolResult, ToolsUpdate

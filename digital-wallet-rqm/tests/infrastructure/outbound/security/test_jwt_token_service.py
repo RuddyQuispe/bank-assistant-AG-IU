@@ -2,7 +2,7 @@ import jwt
 import pytest
 
 from digital_wallet_rqm.domain.errors import InvalidTokenError
-from digital_wallet_rqm.domain.models.current_user import CurrentUser
+from digital_wallet_rqm.domain.models import CurrentUser
 from digital_wallet_rqm.infrastructure.outbound.security.jwt_token_service import JwtTokenService
 
 SECRET = "test-secret-with-at-least-32-bytes!!"

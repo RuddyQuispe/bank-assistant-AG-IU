@@ -5,7 +5,7 @@ from langchain_core.vectorstores import VectorStore
 from digital_wallet_rqm.application.auth_use_cases import AuthUseCases
 from digital_wallet_rqm.application.chat_use_cases import ChatUseCases
 from digital_wallet_rqm.domain.errors import UnauthorizedError
-from digital_wallet_rqm.domain.models.current_user import CurrentUser
+from digital_wallet_rqm.domain.models import CurrentUser
 from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import RagAgent
 from digital_wallet_rqm.infrastructure.outbound.vectorstore.document_indexer import DocumentIndexer
 

@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from langchain_core.vectorstores import VectorStore
 
-from digital_wallet_rqm.domain.models.current_user import CurrentUser
+from digital_wallet_rqm.domain.models import CurrentUser
 
 
 @dataclass(frozen=True)

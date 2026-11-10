@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from digital_wallet_rqm.domain.errors import SessionForbiddenError, SessionNotFoundError
-from digital_wallet_rqm.domain.models.current_user import CurrentUser
+from digital_wallet_rqm.domain.models import CurrentUser
 from digital_wallet_rqm.infrastructure.outbound.persistence.database import database_url, get_engine
 from digital_wallet_rqm.infrastructure.outbound.persistence.repositories import SqlSessionRepository
 

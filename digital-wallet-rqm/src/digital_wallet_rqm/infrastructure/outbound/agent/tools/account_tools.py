@@ -2,7 +2,7 @@ from typing import Annotated
 
 from langchain_core.tools import InjectedToolArg, tool
 
-from digital_wallet_rqm.domain.models.current_user import CurrentUser
+from digital_wallet_rqm.domain.models import CurrentUser
 
 # Saldos de prueba por user_id, mientras no exista una base de cuentas
 _DEMO_BALANCES = {"1": "1,500.50 Bs"}

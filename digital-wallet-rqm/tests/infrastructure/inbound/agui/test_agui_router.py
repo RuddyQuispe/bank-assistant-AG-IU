@@ -18,9 +18,7 @@ from digital_wallet_rqm.application.auth_use_cases import AuthUseCases
 from digital_wallet_rqm.application.chat_use_cases import ChatUseCases
 from digital_wallet_rqm.application.ports.chat_agent import ChatAgent
 from digital_wallet_rqm.application.ports.session_repository import SessionRepository
-from digital_wallet_rqm.domain.models.chat import ChatMessage
-from digital_wallet_rqm.domain.models.chat_session import ChatSession, build_title
-from digital_wallet_rqm.domain.models.current_user import CurrentUser
+from digital_wallet_rqm.domain.models import ChatMessage, ChatSession, CurrentUser, build_title
 from digital_wallet_rqm.infrastructure.inbound.dependencies import (
     get_auth_use_cases,
     get_chat_use_cases,

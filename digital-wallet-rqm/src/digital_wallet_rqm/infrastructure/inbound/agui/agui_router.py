@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from langchain_core.vectorstores import VectorStore
 
 from digital_wallet_rqm.application.chat_use_cases import ChatUseCases
-from digital_wallet_rqm.domain.models.current_user import CurrentUser
+from digital_wallet_rqm.domain.models import CurrentUser
 from digital_wallet_rqm.infrastructure.inbound.agui.wallet_agui_adapter import AGENT_NAME, WalletAGUIAdapter
 from digital_wallet_rqm.infrastructure.inbound.dependencies import (
     get_chat_use_cases,

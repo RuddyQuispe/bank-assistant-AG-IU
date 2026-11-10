@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, status
 
 from digital_wallet_rqm.application.chat_use_cases import ChatUseCases
-from digital_wallet_rqm.domain.models.current_user import CurrentUser
+from digital_wallet_rqm.domain.models import CurrentUser
 from digital_wallet_rqm.infrastructure.inbound.dependencies import get_chat_use_cases, get_current_user
 from digital_wallet_rqm.infrastructure.inbound.error_schema import (
     FORBIDDEN_RESPONSE,

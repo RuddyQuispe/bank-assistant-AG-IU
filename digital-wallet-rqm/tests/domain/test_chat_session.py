@@ -1,4 +1,4 @@
-from digital_wallet_rqm.domain.models.chat_session import build_title
+from digital_wallet_rqm.domain.models import build_title
 
 
 def test_short_question_is_the_title() -> None:

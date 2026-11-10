@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from digital_wallet_rqm.domain.models.chat_session import ChatSession
+from digital_wallet_rqm.domain.models import ChatSession
 
 
 class ChatRequest(BaseModel):

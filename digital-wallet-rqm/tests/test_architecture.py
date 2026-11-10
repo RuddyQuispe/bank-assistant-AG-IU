@@ -67,6 +67,18 @@ def test_each_port_file_defines_one_contract(path: Path) -> None:
     assert "ABC" in [base.id for base in classes[0].bases if isinstance(base, ast.Name)]
 
 
+@pytest.mark.parametrize(
+    "path", [path for path in _python_files("") if PACKAGE / "domain" not in path.parents], ids=_ids
+)
+def test_domain_is_imported_through_its_packages(path: Path) -> None:
+    # Una sola forma de importar el dominio: domain.models o domain.errors, nunca sus archivos internos
+    internal = (f"{ROOT}.domain.models.", f"{ROOT}.domain.errors.")
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    modules = [node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module]
+    modules += [alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names]
+    assert sorted(module for module in modules if module.startswith(internal)) == []
+
+
 def test_outbound_adapters_do_not_depend_on_inbound() -> None:
     # Lo saliente (LLM, base, vector store) no conoce a quién lo llama (REST, AG-UI)
     files = _python_files("infrastructure/outbound")

@@ -2,8 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from digital_wallet_rqm.application.auth_use_cases import AuthUseCases
-from digital_wallet_rqm.domain.models import ChatAnswer
-from digital_wallet_rqm.domain.models.current_user import CurrentUser
+from digital_wallet_rqm.domain.models import ChatAnswer, CurrentUser
 from digital_wallet_rqm.infrastructure.inbound.dependencies import (
     get_auth_use_cases,
     get_chat_use_cases,

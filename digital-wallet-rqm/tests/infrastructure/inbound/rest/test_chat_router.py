@@ -5,10 +5,8 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from digital_wallet_rqm.domain.models import ChatAnswer, ChatMessage
 from digital_wallet_rqm.domain.errors import SessionForbiddenError, SessionNotFoundError
-from digital_wallet_rqm.domain.models.chat_session import ChatSession
-from digital_wallet_rqm.domain.models.current_user import CurrentUser
+from digital_wallet_rqm.domain.models import ChatAnswer, ChatMessage, ChatSession, CurrentUser
 from digital_wallet_rqm.infrastructure.inbound.dependencies import get_chat_use_cases, get_current_user
 from digital_wallet_rqm.main import app
 

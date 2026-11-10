@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from digital_wallet_rqm.domain.models.chat_session import build_title
+from digital_wallet_rqm.domain.models import build_title
 from digital_wallet_rqm.infrastructure.outbound.persistence.database import session_factory
 from digital_wallet_rqm.infrastructure.outbound.persistence.entities import SessionRecord
 

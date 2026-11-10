@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from digital_wallet_rqm.domain.models.current_user import CurrentUser
+from digital_wallet_rqm.domain.models import CurrentUser
 from digital_wallet_rqm.infrastructure.inbound.dependencies import get_current_user, get_document_indexer
 from digital_wallet_rqm.main import app
 
