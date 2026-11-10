@@ -2,7 +2,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.vectorstores import VectorStore
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
-from digital_wallet_rqm.application.ports.outbound.chat_agent import ChatAgent
+from digital_wallet_rqm.application.ports.chat_agent import ChatAgent
 from digital_wallet_rqm.domain.models import ChatMessage, CurrentUser
 from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
 from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import RagAgent

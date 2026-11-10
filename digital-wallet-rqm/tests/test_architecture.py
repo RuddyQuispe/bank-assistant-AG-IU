@@ -57,6 +57,16 @@ def test_application_depends_only_on_domain(path: Path) -> None:
     assert _violations(path, forbidden) == []
 
 
+@pytest.mark.parametrize(
+    "path", [path for path in _python_files("application/ports") if path.name != "__init__.py"], ids=_ids
+)
+def test_each_port_file_defines_one_contract(path: Path) -> None:
+    # Un contrato por archivo: cada caso de uso importa solo lo que necesita
+    classes = [node for node in ast.parse(path.read_text(encoding="utf-8")).body if isinstance(node, ast.ClassDef)]
+    assert len(classes) == 1
+    assert "ABC" in [base.id for base in classes[0].bases if isinstance(base, ast.Name)]
+
+
 def test_outbound_adapters_do_not_depend_on_inbound() -> None:
     # Lo saliente (LLM, base, vector store) no conoce a quién lo llama (REST, AG-UI)
     files = _python_files("infrastructure/outbound")

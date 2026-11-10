@@ -3,8 +3,8 @@
 import pytest
 
 from digital_wallet_rqm.application.auth_use_cases import AuthUseCases
-from digital_wallet_rqm.application.ports.outbound.token_service import TokenService
-from digital_wallet_rqm.application.ports.outbound.user_repository import UserRepository
+from digital_wallet_rqm.application.ports.token_service import TokenService
+from digital_wallet_rqm.application.ports.user_repository import UserRepository
 from digital_wallet_rqm.domain.errors import InvalidCredentialsError, InvalidTokenError
 from digital_wallet_rqm.domain.models import CurrentUser
 

@@ -16,14 +16,14 @@ from langgraph.runtime import Runtime
 
 from digital_wallet_rqm.application.auth_use_cases import AuthUseCases
 from digital_wallet_rqm.application.chat_use_cases import ChatUseCases
-from digital_wallet_rqm.application.ports.outbound.chat_agent import ChatAgent
-from digital_wallet_rqm.application.ports.outbound.session_repository import SessionRepository
+from digital_wallet_rqm.application.ports.chat_agent import ChatAgent
+from digital_wallet_rqm.application.ports.session_repository import SessionRepository
 from digital_wallet_rqm.domain.models.chat import ChatMessage
 from digital_wallet_rqm.domain.models.chat_session import ChatSession, build_title
 from digital_wallet_rqm.domain.models.current_user import CurrentUser
 from digital_wallet_rqm.infrastructure.inbound.dependencies import (
-    get_auth_service,
-    get_chat_service,
+    get_auth_use_cases,
+    get_chat_use_cases,
     get_current_user,
     get_rag_agent,
     get_vector_store,
@@ -133,7 +133,7 @@ def env() -> Iterator[Env]:
     environment = Env()
     app.dependency_overrides[get_rag_agent] = lambda: environment.graph
     chat_service = ChatUseCases(agent=UnusedChatAgent(), sessions=environment.sessions)
-    app.dependency_overrides[get_chat_service] = lambda: chat_service
+    app.dependency_overrides[get_chat_use_cases] = lambda: chat_service
     app.dependency_overrides[get_vector_store] = lambda: InMemoryVectorStore(DeterministicFakeEmbedding(size=8))
     yield environment
     app.dependency_overrides.clear()
@@ -238,7 +238,7 @@ def test_session_of_another_user_returns_403(client: TestClient, env: Env) -> No
 
 
 def test_run_without_token_returns_401(env: Env) -> None:
-    app.dependency_overrides[get_auth_service] = lambda: AuthUseCases(JwtTokenService("test-secret"), DemoUserRepository())
+    app.dependency_overrides[get_auth_use_cases] = lambda: AuthUseCases(JwtTokenService("test-secret"), DemoUserRepository())
 
     response = TestClient(app).post("/agents/wallet", json=_run_input("s1"))
 

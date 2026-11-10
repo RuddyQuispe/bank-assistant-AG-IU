@@ -31,17 +31,17 @@ No importa FastAPI, SQLAlchemy, LangGraph ni Pydantic.
 
 | Archivo | Contenido |
 |---|---|
-| `ports/inbound/chat_service.py` | `ChatService`: lo que la API le puede pedir al chat (puerto de entrada) |
-| `ports/inbound/auth_service.py` | `AuthService`: login y usuario del token (puerto de entrada) |
-| `ports/outbound/session_repository.py` | `SessionRepository`: dónde se guardan las sesiones (puerto de salida) |
-| `ports/outbound/chat_agent.py` | `ChatAgent`: quién responde y guarda el historial (puerto de salida) |
-| `ports/outbound/token_service.py` | `TokenService`: emitir y leer tokens, sin saber que son JWT (puerto de salida) |
-| `ports/outbound/user_repository.py` | `UserRepository`: dónde se buscan los usuarios (puerto de salida) |
+| `ports/session_repository.py` | `SessionRepository`: dónde se guardan las sesiones |
+| `ports/chat_agent.py` | `ChatAgent`: quién responde y guarda el historial |
+| `ports/token_service.py` | `TokenService`: emitir y leer tokens, sin saber que son JWT |
+| `ports/user_repository.py` | `UserRepository`: dónde se buscan los usuarios |
 | `chat_use_cases.py` | `ChatUseCases`: las reglas del chat (dueño de la sesión, 404/403, título, orden del borrado) |
 | `auth_use_cases.py` | `AuthUseCases`: las reglas del login (solo un usuario existente recibe token) |
 
-Un puerto es una clase abstracta (`ABC`), equivalente a una `interface` de Java. Los casos de uso solo
-reciben puertos, así que se testean con dobles en memoria (`tests/application/`).
+Un puerto es una clase abstracta (`ABC`), equivalente a una `interface` de Java, y cada archivo define un
+solo contrato. Los puertos son solo de salida: describen lo que la aplicación necesita de afuera. Los routers
+llaman directo al caso de uso, sin una interfaz de entrada, porque cada uno tiene una sola implementación.
+Los casos de uso solo reciben puertos, así que se testean con dobles en memoria (`tests/application/`).
 
 ### `infrastructure/`: los adaptadores (detalles técnicos)
 
@@ -86,9 +86,9 @@ inbound/rest/routers/chat_router.py          recibe el DTO y el usuario del toke
 **AG-UI, `POST /agents/wallet` (streaming):**
 
 ```
-inbound/agui/agui_router.py          valida la sesión con ChatService.start_run (404/403)
+inbound/agui/agui_router.py          valida la sesión con ChatUseCases.start_run (404/403)
   ├─► inbound/agui/wallet_agui_adapter.py   traduce el grafo RAG a eventos AG-UI (SSE)
-  └─► ChatService.finish_run             registra título y actividad si el run terminó bien
+  └─► ChatUseCases.finish_run             registra título y actividad si el run terminó bien
 ```
 
 Las reglas de sesión pasan por `ChatUseCases`, igual que en REST. El grafo no pasa por el puerto `ChatAgent`,
@@ -130,7 +130,7 @@ Un **caso de uso solo conoce puertos** y vive en `application/`. Por eso `auth_r
 | DTO | `infrastructure/inbound/rest/schemas/*` (Pydantic) |
 | `@RestControllerAdvice` | `infrastructure/inbound/exception_handlers.py` |
 | `@Service` | `application/chat_use_cases.py` |
-| `interface` del servicio o del repositorio | `application/ports/` |
+| `interface` del repositorio o cliente externo | `application/ports/` |
 | `@Repository` + `@Entity` | `infrastructure/outbound/persistence/repositories/` + `entities/` |
 | configuración de beans | `lifespan` en `main.py` |
 

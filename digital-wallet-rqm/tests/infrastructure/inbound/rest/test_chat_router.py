@@ -5,11 +5,11 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from digital_wallet_rqm.application.ports.inbound.chat_service import ChatAnswer, ChatMessage, ChatService
+from digital_wallet_rqm.domain.models import ChatAnswer, ChatMessage
 from digital_wallet_rqm.domain.errors import SessionForbiddenError, SessionNotFoundError
 from digital_wallet_rqm.domain.models.chat_session import ChatSession
 from digital_wallet_rqm.domain.models.current_user import CurrentUser
-from digital_wallet_rqm.infrastructure.inbound.dependencies import get_chat_service, get_current_user
+from digital_wallet_rqm.infrastructure.inbound.dependencies import get_chat_use_cases, get_current_user
 from digital_wallet_rqm.main import app
 
 CREATED = datetime(2026, 10, 26, 10, 0, tzinfo=UTC)
@@ -20,7 +20,7 @@ def _session(session_id: str, title: str | None) -> ChatSession:
     return ChatSession(session_id=session_id, user_id="1", title=title, created_at=CREATED, updated_at=UPDATED)
 
 
-class FakeChatService(ChatService):
+class FakeChatService:
     """Servicio falso: evita llamar al LLM y a la base de datos; "ajena" es de otro usuario y "nope" no existe"""
 
     def __init__(self) -> None:
@@ -64,7 +64,7 @@ class FakeChatService(ChatService):
 @pytest.fixture
 def fake_service() -> Iterator[FakeChatService]:
     service = FakeChatService()
-    app.dependency_overrides[get_chat_service] = lambda: service
+    app.dependency_overrides[get_chat_use_cases] = lambda: service
     app.dependency_overrides[get_current_user] = lambda: CurrentUser(user_id="1", nickname="ruddy")
     yield service
     app.dependency_overrides.clear()

@@ -1,4 +1,4 @@
-from digital_wallet_rqm.application.ports.outbound.user_repository import UserRepository
+from digital_wallet_rqm.application.ports.user_repository import UserRepository
 from digital_wallet_rqm.domain.models import CurrentUser
 from digital_wallet_rqm.infrastructure.settings import settings
 

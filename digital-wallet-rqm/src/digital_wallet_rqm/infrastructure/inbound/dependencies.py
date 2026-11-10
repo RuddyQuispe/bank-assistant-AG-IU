@@ -2,8 +2,8 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from langchain_core.vectorstores import VectorStore
 
-from digital_wallet_rqm.application.ports.inbound.auth_service import AuthService
-from digital_wallet_rqm.application.ports.inbound.chat_service import ChatService
+from digital_wallet_rqm.application.auth_use_cases import AuthUseCases
+from digital_wallet_rqm.application.chat_use_cases import ChatUseCases
 from digital_wallet_rqm.domain.errors import UnauthorizedError
 from digital_wallet_rqm.domain.models.current_user import CurrentUser
 from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import RagAgent
@@ -13,10 +13,10 @@ from digital_wallet_rqm.infrastructure.outbound.vectorstore.document_indexer imp
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def get_chat_service(request: Request) -> ChatService:
+def get_chat_use_cases(request: Request) -> ChatUseCases:
     """Entrega el servicio creado al arrancar la app (ver lifespan en main.py)"""
-    service: ChatService = request.app.state.chat_service
-    return service
+    use_cases: ChatUseCases = request.app.state.chat_use_cases
+    return use_cases
 
 
 def get_rag_agent(request: Request) -> RagAgent:
@@ -37,18 +37,18 @@ def get_document_indexer(request: Request) -> DocumentIndexer:
     return indexer
 
 
-def get_auth_service(request: Request) -> AuthService:
+def get_auth_use_cases(request: Request) -> AuthUseCases:
     """Entrega el servicio de auth creado al arrancar la app (ver lifespan en main.py)"""
-    auth_service: AuthService = request.app.state.auth_service
-    return auth_service
+    use_cases: AuthUseCases = request.app.state.auth_use_cases
+    return use_cases
 
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-    auth_service: AuthService = Depends(get_auth_service),
+    auth: AuthUseCases = Depends(get_auth_use_cases),
 ) -> CurrentUser:
     """Filtro de auth: lee el token "Authorization: Bearer ..." y devuelve el usuario, o responde 401"""
     if credentials is None:
         raise UnauthorizedError("Falta el token")
     # Un token inválido lanza InvalidTokenError: el handler global responde 401 "Token inválido"
-    return auth_service.current_user(credentials.credentials)
+    return auth.current_user(credentials.credentials)

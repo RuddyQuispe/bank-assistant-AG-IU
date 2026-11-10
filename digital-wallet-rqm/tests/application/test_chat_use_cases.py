@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 import pytest
 
 from digital_wallet_rqm.application.chat_use_cases import ChatUseCases
-from digital_wallet_rqm.application.ports.outbound.chat_agent import ChatAgent
-from digital_wallet_rqm.application.ports.outbound.session_repository import SessionRepository
+from digital_wallet_rqm.application.ports.chat_agent import ChatAgent
+from digital_wallet_rqm.application.ports.session_repository import SessionRepository
 from digital_wallet_rqm.domain.errors import SessionForbiddenError, SessionNotFoundError
 from digital_wallet_rqm.domain.models import ChatMessage, ChatSession, CurrentUser, build_title
 

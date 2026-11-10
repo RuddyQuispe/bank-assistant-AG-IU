@@ -2,11 +2,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from digital_wallet_rqm.application.auth_use_cases import AuthUseCases
-from digital_wallet_rqm.application.ports.inbound.chat_service import ChatAnswer
+from digital_wallet_rqm.domain.models import ChatAnswer
 from digital_wallet_rqm.domain.models.current_user import CurrentUser
 from digital_wallet_rqm.infrastructure.inbound.dependencies import (
-    get_auth_service,
-    get_chat_service,
+    get_auth_use_cases,
+    get_chat_use_cases,
     get_document_indexer,
 )
 from digital_wallet_rqm.infrastructure.outbound.persistence.repositories import DemoUserRepository
@@ -46,8 +46,8 @@ def chat_service():
 @pytest.fixture
 def client(auth_service, chat_service):
     # El filtro de auth es real; solo se reemplazan los servicios que llaman al LLM o a Chroma
-    app.dependency_overrides[get_auth_service] = lambda: auth_service
-    app.dependency_overrides[get_chat_service] = lambda: chat_service
+    app.dependency_overrides[get_auth_use_cases] = lambda: auth_service
+    app.dependency_overrides[get_chat_use_cases] = lambda: chat_service
     app.dependency_overrides[get_document_indexer] = lambda: FakeIndexer()
     yield TestClient(app)
     app.dependency_overrides.clear()

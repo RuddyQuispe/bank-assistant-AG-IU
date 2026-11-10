@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import jwt
 
-from digital_wallet_rqm.application.ports.outbound.token_service import TokenService
+from digital_wallet_rqm.application.ports.token_service import TokenService
 from digital_wallet_rqm.domain.errors import InvalidTokenError
 from digital_wallet_rqm.domain.models import CurrentUser
 from digital_wallet_rqm.infrastructure.settings import settings

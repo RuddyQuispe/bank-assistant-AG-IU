@@ -30,7 +30,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Aquí se arman los adaptadores y se inyectan en los casos de uso (composition root).
 
     # Se crea primero: si falta JWT_SECRET la app no arranca
-    app.state.auth_service = AuthUseCases(tokens=JwtTokenService(settings.JWT_SECRET), users=DemoUserRepository())
+    app.state.auth_use_cases = AuthUseCases(tokens=JwtTokenService(settings.JWT_SECRET), users=DemoUserRepository())
 
     # Las conexiones se abren una sola vez y se cierran al salir del "async with":
     # el checkpointer (tablas de LangGraph) y el engine de la tabla propia "sessions", en la misma base
@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.rag_agent = build_rag_agent(checkpointer)
         app.state.vector_store = vector_store
         # Caso de uso del chat (REST y AG-UI): recibe los adaptadores a través de sus puertos
-        app.state.chat_service = ChatUseCases(
+        app.state.chat_use_cases = ChatUseCases(
             agent=LangGraphChatAgent(app.state.rag_agent, checkpointer, vector_store),
             sessions=SqlSessionRepository(engine),
         )
