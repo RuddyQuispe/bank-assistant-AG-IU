@@ -1,5 +1,5 @@
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field
 
@@ -22,18 +22,21 @@ class _Body(BaseModel):
     question: str = Field(min_length=1)
 
 
+def _boom(request: Request) -> None:
+    raise request.app.state.error
+
+
+def _validate(body: _Body) -> None:
+    return None
+
+
 def _client_raising(error: Exception) -> TestClient:
     # App mínima: un endpoint que lanza la excepción, con los handlers registrados como en create_app()
     app = FastAPI()
     register_exception_handlers(app)
-
-    @app.get("/boom")
-    def boom() -> None:
-        raise error
-
-    @app.post("/validate")
-    def validate(body: _Body) -> None:
-        return None
+    app.state.error = error
+    app.add_api_route("/boom", _boom)
+    app.add_api_route("/validate", _validate, methods=["POST"])
 
     # raise_server_exceptions=False: se prueba la respuesta 500, no que el error se propague al test
     return TestClient(app, raise_server_exceptions=False)

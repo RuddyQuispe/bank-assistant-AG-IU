@@ -24,12 +24,11 @@ class _FakeLLM:
 
     def bind_tools(self, bound: Sequence[BaseTool]) -> Runnable[LanguageModelInput, AIMessage]:
         self.bound_tools = bound
+        return RunnableLambda(self._invoke)
 
-        def _invoke(messages: list[BaseMessage]) -> AIMessage:
-            self.received = messages
-            return self.reply
-
-        return RunnableLambda(_invoke)
+    def _invoke(self, messages: list[BaseMessage]) -> AIMessage:
+        self.received = messages
+        return self.reply
 
 
 def _patch_llm(monkeypatch: pytest.MonkeyPatch, reply: AIMessage) -> _FakeLLM:

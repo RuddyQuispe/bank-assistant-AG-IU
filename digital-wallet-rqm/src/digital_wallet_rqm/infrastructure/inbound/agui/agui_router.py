@@ -49,19 +49,26 @@ async def run_wallet_agent(
 
     adapter = WalletAGUIAdapter(graph=agent, context=GraphContext(vector_store=vector_store, user=user))
     encoder = EventEncoder(accept=request.headers.get("accept", "text/event-stream"))
+    events = _stream_run(adapter, encoder, chat, input_data)
+    return StreamingResponse(events, media_type=encoder.get_content_type())
+
+
+async def _stream_run(
+    adapter: WalletAGUIAdapter,
+    encoder: EventEncoder,
+    chat: ChatUseCases,
+    input_data: RunAgentInput,
+) -> AsyncIterator[str]:
+    """Emite los eventos AG-UI del run; si terminó bien, registra la pregunta en la sesión"""
     question = _last_user_text(input_data)
-
-    async def events() -> AsyncIterator[str]:
-        # Los errores del grafo llegan como evento RUN_ERROR: el status 200 ya se envió
-        finished = False
-        async for event in adapter.run(input_data):
-            finished = finished or event.type == EventType.RUN_FINISHED
-            yield encoder.encode(event)
-        # Igual que en /chat: título y actividad solo si el run terminó bien
-        if finished and question:
-            await chat.finish_run(input_data.thread_id, question)
-
-    return StreamingResponse(events(), media_type=encoder.get_content_type())
+    # Los errores del grafo llegan como evento RUN_ERROR: el status 200 ya se envió
+    finished = False
+    async for event in adapter.run(input_data):
+        finished = finished or event.type == EventType.RUN_FINISHED
+        yield encoder.encode(event)
+    # Igual que en /chat: título y actividad solo si el run terminó bien
+    if finished and question:
+        await chat.finish_run(input_data.thread_id, question)
 
 
 def _last_user_text(input_data: RunAgentInput) -> str | None:

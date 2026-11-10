@@ -65,13 +65,29 @@ def test_source_page_is_shown_starting_at_one() -> None:
     assert result["sources"] == [{"file": "faq.pdf", "page": 1}]
 
 
+def _fail_get_llm(temperature: float, response_format: type[str]) -> None:
+    raise AssertionError("no debe llamar al LLM sin historial")
+
+
+class _FakeRewriteLLM:
+    """Reescribe siempre con `reply` y guarda cada mensaje humano que recibió"""
+
+    def __init__(self, reply: str) -> None:
+        self.reply = reply
+        self.prompts: list[str] = []
+
+    def __call__(self, temperature: float, response_format: type[str]) -> RunnableLambda[PromptValue, str]:
+        return RunnableLambda(self._rewrite)
+
+    def _rewrite(self, prompt: PromptValue) -> str:
+        self.prompts.append(prompt.to_messages()[-1].text)
+        return self.reply
+
+
 def test_first_question_searches_without_calling_the_llm(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    def fail_get_llm(temperature: float, response_format: type[str]) -> None:
-        raise AssertionError("no debe llamar al LLM sin historial")
-
-    monkeypatch.setattr(retrieve, "get_llm", fail_get_llm)
+    monkeypatch.setattr(retrieve, "get_llm", _fail_get_llm)
 
     _run_retrieve(_store(1))
 
@@ -81,13 +97,8 @@ def test_first_question_searches_without_calling_the_llm(
 def test_follow_up_question_is_rewritten_with_history(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    received: list[str] = []
-
-    def rewrite(prompt: PromptValue) -> str:
-        received.append(prompt.to_messages()[-1].text)
-        return "comisión de mantenimiento tarjeta de crédito Platinum"
-
-    monkeypatch.setattr(retrieve, "get_llm", lambda temperature, response_format: RunnableLambda(rewrite))
+    llm = _FakeRewriteLLM("comisión de mantenimiento tarjeta de crédito Platinum")
+    monkeypatch.setattr(retrieve, "get_llm", llm)
     messages = [
         HumanMessage(content="cuánto cuesta el mantenimiento de la tarjeta de crédito"),
         AIMessage(content="Depende del tipo de tarjeta."),
@@ -97,7 +108,7 @@ def test_follow_up_question_is_rewritten_with_history(
     _run_retrieve(_store(1), question="¿y para la Platinum?", messages=messages)
 
     # El historial no incluye la pregunta actual: va aparte
-    assert received == [
+    assert llm.prompts == [
         "Historial: Usuario: cuánto cuesta el mantenimiento de la tarjeta de crédito\n"
         "IA: Depende del tipo de tarjeta.\n"
         "Pregunta: ¿y para la Platinum?"

@@ -7,22 +7,29 @@ from digital_wallet_rqm.infrastructure.outbound.agent.nodes import interpreter
 from digital_wallet_rqm.infrastructure.outbound.agent.nodes.interpreter import node_interpreter
 
 
-def _patch_llm(monkeypatch: pytest.MonkeyPatch, reply: str = "respuesta final") -> dict[str, str]:
-    received: dict[str, str] = {}
+class _FakeLLM:
+    """Reemplaza get_llm: responde `reply` y guarda el mensaje humano que recibió"""
 
-    def _capture(prompt: PromptValue) -> AIMessage:
-        received["human"] = prompt.to_messages()[-1].text
-        return AIMessage(content=reply, id="llm-message")
+    def __init__(self, reply: str) -> None:
+        self.reply = reply
+        self.human = ""
 
-    def fake_get_llm(temperature: float) -> RunnableLambda[PromptValue, AIMessage]:
-        return RunnableLambda(_capture)
+    def __call__(self, temperature: float) -> RunnableLambda[PromptValue, AIMessage]:
+        return RunnableLambda(self._answer)
 
-    monkeypatch.setattr(interpreter, "get_llm", fake_get_llm)
-    return received
+    def _answer(self, prompt: PromptValue) -> AIMessage:
+        self.human = prompt.to_messages()[-1].text
+        return AIMessage(content=self.reply, id="llm-message")
+
+
+def _patch_llm(monkeypatch: pytest.MonkeyPatch, reply: str = "respuesta final") -> _FakeLLM:
+    fake = _FakeLLM(reply)
+    monkeypatch.setattr(interpreter, "get_llm", fake)
+    return fake
 
 
 def test_retrieve_route_sends_docs_with_their_source(monkeypatch: pytest.MonkeyPatch) -> None:
-    received = _patch_llm(monkeypatch)
+    llm = _patch_llm(monkeypatch)
     state = {
         "messages": [HumanMessage(content="cuánto cuesta un SPEI")],
         "question": "cuánto cuesta un SPEI",
@@ -33,12 +40,12 @@ def test_retrieve_route_sends_docs_with_their_source(monkeypatch: pytest.MonkeyP
 
     node_interpreter(state)
 
-    assert "[faq.pdf, pág. 3] El SPEI no tiene costo." in received["human"]
-    assert received["human"].endswith("Pregunta: cuánto cuesta un SPEI")
+    assert "[faq.pdf, pág. 3] El SPEI no tiene costo." in llm.human
+    assert llm.human.endswith("Pregunta: cuánto cuesta un SPEI")
 
 
 def test_tools_route_sends_tool_results(monkeypatch: pytest.MonkeyPatch) -> None:
-    received = _patch_llm(monkeypatch)
+    llm = _patch_llm(monkeypatch)
     state = {
         "messages": [HumanMessage(content="cuánto tengo")],
         "question": "cuánto tengo",
@@ -48,11 +55,11 @@ def test_tools_route_sends_tool_results(monkeypatch: pytest.MonkeyPatch) -> None
 
     node_interpreter(state)
 
-    assert "get_balance: Saldo disponible: 1,500.50 MXN" in received["human"]
+    assert "get_balance: Saldo disponible: 1,500.50 MXN" in llm.human
 
 
 def test_analyst_route_sends_history_without_information(monkeypatch: pytest.MonkeyPatch) -> None:
-    received = _patch_llm(monkeypatch)
+    llm = _patch_llm(monkeypatch)
     state = {
         "messages": [AIMessage(content="Tu saldo es 100"), HumanMessage(content="gracias")],
         "question": "gracias",
@@ -61,19 +68,19 @@ def test_analyst_route_sends_history_without_information(monkeypatch: pytest.Mon
 
     node_interpreter(state)
 
-    assert "Historial: IA: Tu saldo es 100\nUsuario: gracias" in received["human"]
-    assert "Información: Ninguna (saludo o aclaración)" in received["human"]
+    assert "Historial: IA: Tu saldo es 100\nUsuario: gracias" in llm.human
+    assert "Información: Ninguna (saludo o aclaración)" in llm.human
 
 
 @pytest.mark.parametrize("route", ["retrieve", "tools"])
 def test_empty_data_is_reported_as_unavailable(monkeypatch: pytest.MonkeyPatch, route: str) -> None:
-    received = _patch_llm(monkeypatch)
+    llm = _patch_llm(monkeypatch)
     state = {"messages": [HumanMessage(content="hola")], "question": "hola", "route": route}
 
     node_interpreter(state)
 
-    assert "Información: Sin información disponible" in received["human"]
-    assert "Historial: Sin contexto previo" in received["human"]
+    assert "Información: Sin información disponible" in llm.human
+    assert "Historial: Sin contexto previo" in llm.human
 
 
 def test_returns_response_and_appends_it_to_messages(monkeypatch: pytest.MonkeyPatch) -> None:

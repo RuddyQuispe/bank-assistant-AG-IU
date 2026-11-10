@@ -10,22 +10,34 @@ def _state(question: str) -> dict:
     return {"messages": [], "question": question}
 
 
-def _patch_llm(monkeypatch, result):
-    captured = {}
+class _FakeLLM:
+    """Reemplaza get_llm: responde siempre `reply` y guarda lo que recibió"""
 
-    def fake_get_llm(temperature, response_format=None):
-        captured["response_format"] = response_format
-        return RunnableLambda(lambda _: result)
+    def __init__(self, reply):
+        self.reply = reply
+        self.response_format = None
+        self.human = None
 
-    monkeypatch.setattr(analyzer, "get_llm", fake_get_llm)
-    return captured
+    def __call__(self, temperature, response_format=None):
+        self.response_format = response_format
+        return RunnableLambda(self._answer)
+
+    def _answer(self, prompt):
+        self.human = prompt.to_messages()[-1].content
+        return self.reply
+
+
+def _patch_llm(monkeypatch, reply):
+    fake = _FakeLLM(reply)
+    monkeypatch.setattr(analyzer, "get_llm", fake)
+    return fake
 
 
 def test_returns_route_from_structured_output(monkeypatch):
-    captured = _patch_llm(monkeypatch, RouteDecision(route="tools", reason="saldo"))
+    llm = _patch_llm(monkeypatch, RouteDecision(route="tools", reason="saldo"))
 
     assert node_analyzer(_state("cuánto tengo")) == {"route": "tools"}
-    assert captured["response_format"] is RouteDecision
+    assert llm.response_format is RouteDecision
 
 
 def test_falls_back_to_retrieve_when_output_is_none(monkeypatch):
@@ -35,16 +47,7 @@ def test_falls_back_to_retrieve_when_output_is_none(monkeypatch):
 
 
 def test_sends_last_two_messages_as_context(monkeypatch):
-    received = {}
-
-    def fake_get_llm(temperature, response_format=None):
-        def _capture(prompt):
-            received["human"] = prompt.to_messages()[-1].content
-            return RouteDecision(route="tools", reason="seguimiento")
-
-        return RunnableLambda(_capture)
-
-    monkeypatch.setattr(analyzer, "get_llm", fake_get_llm)
+    llm = _patch_llm(monkeypatch, RouteDecision(route="tools", reason="seguimiento"))
     state = {
         "messages": [
             HumanMessage(content="viejo"),
@@ -56,4 +59,4 @@ def test_sends_last_two_messages_as_context(monkeypatch):
 
     node_analyzer(state)
 
-    assert received["human"] == "Contexto previo: IA: Tu saldo es 100\nUsuario: y en dólares?\nMensaje: y en dólares?"
+    assert llm.human == "Contexto previo: IA: Tu saldo es 100\nUsuario: y en dólares?\nMensaje: y en dólares?"

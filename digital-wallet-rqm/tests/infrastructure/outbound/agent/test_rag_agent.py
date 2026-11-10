@@ -26,18 +26,27 @@ class _FakeToolsLLM:
         return RunnableLambda(lambda _: call)
 
 
+class _FakeInterpreterLLM:
+    """Responde "respuesta N" y guarda cada mensaje humano que recibió"""
+
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+
+    def __call__(self, temperature: float) -> RunnableLambda[PromptValue, AIMessage]:
+        return RunnableLambda(self._answer)
+
+    def _answer(self, prompt: PromptValue) -> AIMessage:
+        self.prompts.append(prompt.to_messages()[-1].text)
+        return AIMessage(content=f"respuesta {len(self.prompts)}")
+
+
 @pytest.fixture
 def interpreter_input(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """Fakes every LLM; returns the human prompts the interpreter received"""
-    received: list[str] = []
-
-    def _answer(prompt: PromptValue) -> AIMessage:
-        received.append(prompt.to_messages()[-1].text)
-        return AIMessage(content=f"respuesta {len(received)}")
-
-    monkeypatch.setattr(interpreter, "get_llm", lambda temperature: RunnableLambda(_answer))
+    fake = _FakeInterpreterLLM()
+    monkeypatch.setattr(interpreter, "get_llm", fake)
     monkeypatch.setattr(tools, "get_llm", lambda temperature: _FakeToolsLLM())
-    return received
+    return fake.prompts
 
 
 def _route_to(monkeypatch: pytest.MonkeyPatch, route: Route) -> None:

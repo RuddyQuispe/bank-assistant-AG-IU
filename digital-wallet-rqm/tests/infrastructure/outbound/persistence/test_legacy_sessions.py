@@ -106,16 +106,17 @@ async def test_ids_of_any_length_are_imported(env: Env) -> None:
     assert SessionRecord.__table__.c.user_id.type.length is None
 
 
+def _fail_add_all(self: AsyncSession, instances: object) -> None:
+    raise SQLAlchemyError("value too long for type character varying(36)")
+
+
 async def test_database_error_is_logged_and_does_not_stop_startup(
     env: Env, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     checkpointer, engine, graph = env
     await _legacy_chat(graph, "legacy-1", "hola", "1")
 
-    def _fail(self: AsyncSession, instances: object) -> None:
-        raise SQLAlchemyError("value too long for type character varying(36)")
-
-    monkeypatch.setattr(AsyncSession, "add_all", _fail)
+    monkeypatch.setattr(AsyncSession, "add_all", _fail_add_all)
 
     assert await import_legacy_sessions(engine, checkpointer) == 0
     assert "legacy" in caplog.text.lower()

@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from scalar_fastapi import Theme, get_scalar_api_reference
@@ -91,14 +91,16 @@ def create_app() -> FastAPI:
 
     if docs_enabled:
         # Se valida al arrancar: un SCALAR_THEME mal escrito falla aquí y no al abrir la página
-        theme = Theme(settings.SCALAR_THEME)
-
-        def scalar_docs() -> HTMLResponse:
-            return get_scalar_api_reference(openapi_url=app.openapi_url, title=app.title, theme=theme)
-
-        app.add_api_route(settings.SCALAR_PATH, scalar_docs, include_in_schema=False)
+        app.state.scalar_theme = Theme(settings.SCALAR_THEME)
+        app.add_api_route(settings.SCALAR_PATH, _scalar_docs, include_in_schema=False)
 
     return app
+
+
+def _scalar_docs(request: Request) -> HTMLResponse:
+    """Página de Scalar con el OpenAPI de la app"""
+    app = request.app
+    return get_scalar_api_reference(openapi_url=app.openapi_url, title=app.title, theme=app.state.scalar_theme)
 
 
 app = create_app()
