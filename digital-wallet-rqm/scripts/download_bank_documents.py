@@ -8,7 +8,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from digital_wallet_rqm.config.settings import settings
+from digital_wallet_rqm.infrastructure.settings import settings
 
 # (nombre del archivo, url). El nombre aparece en los ids de los chunks y en las fuentes citadas.
 DOCUMENTS = [
