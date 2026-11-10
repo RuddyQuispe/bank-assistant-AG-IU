@@ -4,12 +4,13 @@ import type { ChatMessage } from '../models/chat/chat-message.model'
 interface ChatPanelProps {
   messages: ChatMessage[]
   running: boolean
+  step: string | null
   error: string | null
   onSend: (question: string) => void
 }
 
 // Presentacional: dibuja los mensajes y la caja de pregunta.
-export function ChatPanel({ messages, running, error, onSend }: ChatPanelProps) {
+export function ChatPanel({ messages, running, step, error, onSend }: ChatPanelProps) {
   const [question, setQuestion] = useState('')
 
   function handleSubmit(event: FormEvent) {
@@ -37,6 +38,12 @@ export function ChatPanel({ messages, running, error, onSend }: ChatPanelProps) 
             </div>
           </div>
         ))}
+        {step && (
+          <div className="d-flex align-items-center gap-2 text-body-secondary small mb-2">
+            <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+            <span role="status">{step}</span>
+          </div>
+        )}
         {error && (
           <div className="alert alert-danger py-2 small mt-2" role="alert">
             {error}

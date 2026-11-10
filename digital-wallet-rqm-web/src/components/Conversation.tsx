@@ -6,6 +6,15 @@ import { getHistory } from '../api/sessions'
 import type { ChatMessage } from '../models/chat/chat-message.model'
 import { ChatPanel } from './ChatPanel'
 
+// Texto que ve el usuario por cada nodo del grafo del backend (stepName de AG-UI).
+const STEP_LABELS: Record<string, string> = {
+  ingest: 'Reading your question…',
+  analyzer: 'Understanding what you need…',
+  retrieve: 'Searching the knowledge base…',
+  tools: 'Checking your account…',
+  interpreter: 'Writing the answer…',
+}
+
 interface ConversationProps {
   token: string
   sessionId: string
@@ -20,6 +29,8 @@ export function Conversation({ token, sessionId, onRunFinished }: ConversationPr
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loadingHistory, setLoadingHistory] = useState(true)
   const [running, setRunning] = useState(false)
+  // Paso del agente en curso; se muestra mientras todavía no hay texto de respuesta.
+  const [step, setStep] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // 1. Al abrir: trae el historial y se lo da al agente para que tenga el contexto.
@@ -56,8 +67,13 @@ export function Conversation({ token, sessionId, onRunFinished }: ConversationPr
       await agent.runAgent(
         {},
         {
-          // Empieza la respuesta: burbuja vacía.
+          // El backend entra a un nodo del grafo: se muestra qué está haciendo.
+          onStepStartedEvent: ({ event }) => {
+            setStep(STEP_LABELS[event.stepName] ?? 'Working…')
+          },
+          // Empieza la respuesta: burbuja vacía y ya no hace falta el paso.
           onTextMessageStartEvent: ({ event }) => {
+            setStep(null)
             setMessages((current) => [...current, { id: event.messageId, role: 'assistant', content: '' }])
           },
           // Llega un pedazo: textMessageBuffer es el texto ANTERIOR, por eso se le suma el delta.
@@ -78,6 +94,7 @@ export function Conversation({ token, sessionId, onRunFinished }: ConversationPr
       setError(toErrorMessage(err))
     } finally {
       setRunning(false)
+      setStep(null)
     }
   }
 
@@ -88,5 +105,5 @@ export function Conversation({ token, sessionId, onRunFinished }: ConversationPr
       </div>
     )
   }
-  return <ChatPanel messages={messages} running={running} error={error} onSend={handleSend} />
+  return <ChatPanel messages={messages} running={running} step={step} error={error} onSend={handleSend} />
 }
