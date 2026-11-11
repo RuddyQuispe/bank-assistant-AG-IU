@@ -18,7 +18,7 @@ def _format_information(state: BankState) -> str:
             for doc, source in zip(docs, sources, strict=False)
         ]
         return "\n".join(lines) or _NO_INFORMATION
-    if route == "tools":
+    if route == "bank_tools":
         results = state.get("tool_results", [])
         return "\n".join(f"{result["tool"]}: {result["content"]}" for result in results) or _NO_INFORMATION
     return "Ninguna (saludo o aclaración)"

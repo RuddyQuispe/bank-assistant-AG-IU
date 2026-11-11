@@ -72,11 +72,11 @@ def _ask(question: str, graph: RagAgent | None = None, config: RunnableConfig | 
 def test_graph_compiles_with_all_nodes() -> None:
     graph = build_rag_agent()
 
-    assert {"ingest", "analyzer", "retrieve", "tools", "interpreter"} <= set(graph.get_graph().nodes)
+    assert {"ingest", "analyzer", "retrieve", "bank_tools", "interpreter"} <= set(graph.get_graph().nodes)
 
 
-def test_tools_route_runs_tools_node(monkeypatch: pytest.MonkeyPatch, interpreter_input: list[str]) -> None:
-    _route_to(monkeypatch, "tools")
+def test_bank_tools_route_runs_bank_tools_node(monkeypatch: pytest.MonkeyPatch, interpreter_input: list[str]) -> None:
+    _route_to(monkeypatch, "bank_tools")
 
     result = _ask("cuánto tengo")
 

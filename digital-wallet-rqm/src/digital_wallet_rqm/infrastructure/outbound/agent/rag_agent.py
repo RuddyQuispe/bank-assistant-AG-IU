@@ -19,11 +19,11 @@ RagAgent = CompiledStateGraph[BankState, GraphContext, MessagesState, BankState]
 HIDDEN_FROM_CHAT = {"emit-messages": False, "emit-tool-calls": False}
 
 
-def decide_route_node_path(state: BankState) -> Literal["retrieve", "tools", "interpreter"]:
+def decide_route_node_path(state: BankState) -> Literal["retrieve", "bank_tools", "interpreter"]:
     """Router de la arista condicional (no es un nodo: no modifica el estado)."""
     # match exhaustivo: si se agrega una ruta nueva a Route, mypy avisa que falta manejarla
     match state["route"]:
-        case "retrieve" | "tools" as route:
+        case "retrieve" | "bank_tools" as route:
             return route
         case "analyst":
             return "interpreter"
@@ -35,7 +35,7 @@ def build_rag_agent(checkpointer: BaseCheckpointSaver[str] | None = None) -> Rag
     builder.add_node("ingest", node_ingest)
     builder.add_node("analyzer", node_analyzer, metadata=HIDDEN_FROM_CHAT)
     builder.add_node("retrieve", node_retrieve, metadata=HIDDEN_FROM_CHAT)
-    builder.add_node("tools", node_tools, metadata=HIDDEN_FROM_CHAT)
+    builder.add_node("bank_tools", node_tools, metadata=HIDDEN_FROM_CHAT)
     builder.add_node("interpreter", node_interpreter)
 
     builder.add_edge(START, "ingest")
@@ -45,12 +45,12 @@ def build_rag_agent(checkpointer: BaseCheckpointSaver[str] | None = None) -> Rag
         path=decide_route_node_path,
         path_map={
             "retrieve": "retrieve",
-            "tools": "tools",
+            "bank_tools": "bank_tools",
             "interpreter": "interpreter"
         }
     )
 
     builder.add_edge("retrieve", "interpreter")
-    builder.add_edge("tools", "interpreter")
+    builder.add_edge("bank_tools", "interpreter")
     builder.add_edge("interpreter", END)
     return builder.compile(checkpointer=checkpointer)

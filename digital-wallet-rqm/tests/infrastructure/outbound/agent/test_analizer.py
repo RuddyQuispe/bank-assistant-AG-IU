@@ -34,9 +34,9 @@ def _patch_llm(monkeypatch, reply):
 
 
 def test_returns_route_from_structured_output(monkeypatch):
-    llm = _patch_llm(monkeypatch, RouteDecision(route="tools", reason="saldo"))
+    llm = _patch_llm(monkeypatch, RouteDecision(route="bank_tools", reason="saldo"))
 
-    assert node_analyzer(_state("cuánto tengo")) == {"route": "tools"}
+    assert node_analyzer(_state("cuánto tengo")) == {"route": "bank_tools"}
     assert llm.response_format is RouteDecision
 
 
@@ -47,7 +47,7 @@ def test_falls_back_to_retrieve_when_output_is_none(monkeypatch):
 
 
 def test_sends_last_two_messages_as_context(monkeypatch):
-    llm = _patch_llm(monkeypatch, RouteDecision(route="tools", reason="seguimiento"))
+    llm = _patch_llm(monkeypatch, RouteDecision(route="bank_tools", reason="seguimiento"))
     state = {
         "messages": [
             HumanMessage(content="viejo"),

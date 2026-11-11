@@ -44,12 +44,12 @@ def test_retrieve_route_sends_docs_with_their_source(monkeypatch: pytest.MonkeyP
     assert llm.human.endswith("Pregunta: cuánto cuesta un SPEI")
 
 
-def test_tools_route_sends_tool_results(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_bank_tools_route_sends_tool_results(monkeypatch: pytest.MonkeyPatch) -> None:
     llm = _patch_llm(monkeypatch)
     state = {
         "messages": [HumanMessage(content="cuánto tengo")],
         "question": "cuánto tengo",
-        "route": "tools",
+        "route": "bank_tools",
         "tool_results": [{"tool": "get_balance", "content": "Saldo disponible: 1,500.50 MXN"}],
     }
 
@@ -72,7 +72,7 @@ def test_analyst_route_sends_history_without_information(monkeypatch: pytest.Mon
     assert "Información: Ninguna (saludo o aclaración)" in llm.human
 
 
-@pytest.mark.parametrize("route", ["retrieve", "tools"])
+@pytest.mark.parametrize("route", ["retrieve", "bank_tools"])
 def test_empty_data_is_reported_as_unavailable(monkeypatch: pytest.MonkeyPatch, route: str) -> None:
     llm = _patch_llm(monkeypatch)
     state = {"messages": [HumanMessage(content="hola")], "question": "hola", "route": route}
@@ -85,7 +85,7 @@ def test_empty_data_is_reported_as_unavailable(monkeypatch: pytest.MonkeyPatch, 
 
 def test_returns_response_and_appends_it_to_messages(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_llm(monkeypatch, reply="Tienes 1,500.50 MXN")
-    state = {"messages": [HumanMessage(content="cuánto tengo")], "question": "cuánto tengo", "route": "tools"}
+    state = {"messages": [HumanMessage(content="cuánto tengo")], "question": "cuánto tengo", "route": "bank_tools"}
 
     result = node_interpreter(state)
 
