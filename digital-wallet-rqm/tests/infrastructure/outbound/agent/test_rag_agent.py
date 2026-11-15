@@ -117,3 +117,17 @@ def test_checkpointer_keeps_history_per_thread(monkeypatch: pytest.MonkeyPatch, 
     result = _ask("gracias", graph=graph, config=config)
 
     assert [message.text for message in result["messages"]] == ["hola", "respuesta 1", "gracias", "respuesta 2"]
+
+
+def test_client_tools_from_input_reach_the_state(
+    monkeypatch: pytest.MonkeyPatch, interpreter_input: list[str]
+) -> None:
+    _route_to(monkeypatch, "analyst")
+    client_tools = [{"name": "set_theme", "description": "Switch theme", "parameters": {"type": "object"}}]
+
+    result = build_rag_agent().invoke(
+        # Así llega desde AG-UI: el adapter pone las tools del cliente en "tools"
+        {"messages": [HumanMessage(content="modo oscuro")], "tools": client_tools}, context=_context()
+    )
+
+    assert result["tools"] == client_tools

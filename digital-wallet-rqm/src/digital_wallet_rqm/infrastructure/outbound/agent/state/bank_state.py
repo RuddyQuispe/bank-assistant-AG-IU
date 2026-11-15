@@ -1,4 +1,4 @@
-from typing import NotRequired, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 from langchain_core.messages import AnyMessage
 from langgraph.graph import MessagesState
@@ -11,10 +11,23 @@ class ToolResult(TypedDict):
     content: str
 
 
+# Descripción de una tool del cliente (name, description, parameters); su código vive en el navegador
+ClientTool = dict[str, Any]
+
+
+class AgentInput(MessagesState):
+    """Lo que acepta el grafo al entrar: LangGraph descarta cualquier clave que no esté aquí"""
+
+    # AG-UI escribe las tools del cliente en "tools" (nombre fijo del adapter); otros clientes no las mandan
+    tools: NotRequired[list[ClientTool]]
+
+
 class BankState(MessagesState):
     # "messages" viene de MessagesState y se acumula con add_messages
     # "question" la llena el nodo ingest desde el último mensaje del usuario
     question: str
+    # Tools que ofrece el cliente (AG-UI las une con las del checkpoint); las ejecuta el navegador, no el backend
+    tools: NotRequired[list[ClientTool]]
     # Campos que los nodos llenan durante la ejecución
     route: NotRequired[Route]
     retrieve_docs: NotRequired[list[str]]
