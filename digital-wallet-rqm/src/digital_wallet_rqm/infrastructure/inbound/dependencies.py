@@ -1,4 +1,6 @@
-from fastapi import Depends, Request
+from typing import Annotated
+
+from fastapi import Depends, Header, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from langchain_core.vectorstores import VectorStore
 
@@ -6,6 +8,8 @@ from digital_wallet_rqm.application.auth_use_cases import AuthUseCases
 from digital_wallet_rqm.application.chat_use_cases import ChatUseCases
 from digital_wallet_rqm.domain.errors import UnauthorizedError
 from digital_wallet_rqm.domain.models import CurrentUser
+from digital_wallet_rqm.infrastructure.inbound.agui.wallet_agui_adapter import WalletAGUIAdapter
+from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
 from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import RagAgent
 from digital_wallet_rqm.infrastructure.outbound.vectorstore.document_indexer import DocumentIndexer
 
@@ -52,3 +56,21 @@ def get_current_user(
         raise UnauthorizedError("Falta el token")
     # Un token inválido lanza InvalidTokenError: el handler global responde 401 "Token inválido"
     return auth.current_user(credentials.credentials)
+
+
+def get_wallet_adapter(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    agent: Annotated[RagAgent, Depends(get_rag_agent)],
+    vector_store: Annotated[VectorStore, Depends(get_vector_store)],
+) -> WalletAGUIAdapter:
+    """Un adaptador AG-UI por request: lleva al usuario del token en el contexto del grafo"""
+    return WalletAGUIAdapter(graph=agent, context=GraphContext(vector_store=vector_store, user=user))
+
+
+# Datos de la request: los manda el cliente
+AuthenticatedUser = Annotated[CurrentUser, Depends(get_current_user)]  # header Authorization
+AcceptHeader = Annotated[str, Header()]  # header Accept
+
+# Servicios: instancias del servidor creadas al arrancar (lifespan) o armadas por request
+ChatService = Annotated[ChatUseCases, Depends(get_chat_use_cases)]
+WalletAgentService = Annotated[WalletAGUIAdapter, Depends(get_wallet_adapter)]

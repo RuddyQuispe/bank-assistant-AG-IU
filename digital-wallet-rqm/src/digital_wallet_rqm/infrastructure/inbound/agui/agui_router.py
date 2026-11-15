@@ -2,26 +2,23 @@ from collections.abc import AsyncIterator
 
 from ag_ui.core import EventType, RunAgentInput, UserMessage
 from ag_ui.encoder import EventEncoder
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from langchain_core.vectorstores import VectorStore
 
 from digital_wallet_rqm.application.chat_use_cases import ChatUseCases
-from digital_wallet_rqm.domain.models import CurrentUser
 from digital_wallet_rqm.infrastructure.inbound.agui.wallet_agui_adapter import AGENT_NAME, WalletAGUIAdapter
 from digital_wallet_rqm.infrastructure.inbound.dependencies import (
-    get_chat_use_cases,
+    AcceptHeader,
+    AuthenticatedUser,
+    ChatService,
+    WalletAgentService,
     get_current_user,
-    get_rag_agent,
-    get_vector_store,
 )
 from digital_wallet_rqm.infrastructure.inbound.error_schema import (
     FORBIDDEN_RESPONSE,
     NOT_FOUND_RESPONSE,
     UNAUTHORIZED_RESPONSE,
 )
-from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
-from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import RagAgent
 
 # Adaptador AG-UI: mismo grafo que /chat, pero con respuesta en streaming (SSE)
 router = APIRouter(
@@ -34,22 +31,23 @@ router = APIRouter(
 
 @router.post(f"/{AGENT_NAME}", summary="Correr el agente por AG-UI (streaming)")
 async def run_wallet_agent(
-    input_data: RunAgentInput,
-    request: Request,
-    user: CurrentUser = Depends(get_current_user),
-    agent: RagAgent = Depends(get_rag_agent),
-    chat: ChatUseCases = Depends(get_chat_use_cases),
-    vector_store: VectorStore = Depends(get_vector_store),
+    # Request
+    body: RunAgentInput,
+    user: AuthenticatedUser,
+    # Servicios
+    chat: ChatService,
+    agent: WalletAgentService,
+    # Request (al final porque tiene valor por defecto)
+    accept: AcceptHeader = "text/event-stream",
 ) -> StreamingResponse:
     """`threadId` es una sesión creada antes con `POST /chat/sessions` (el id lo asigna el servidor).
 
     Si no existe responde 404 y si es de otro usuario, 403, antes de abrir el stream.
     """
-    await chat.start_run(user, input_data.thread_id)
+    await chat.start_run(user, body.thread_id)
 
-    adapter = WalletAGUIAdapter(graph=agent, context=GraphContext(vector_store=vector_store, user=user))
-    encoder = EventEncoder(accept=request.headers.get("accept", "text/event-stream"))
-    events = _stream_run(adapter, encoder, chat, input_data)
+    encoder = EventEncoder(accept=accept)
+    events = _stream_run(agent, encoder, chat, body)
     return StreamingResponse(events, media_type=encoder.get_content_type())
 
 

@@ -293,12 +293,22 @@ paths:
         Si no existe responde 404 y si es de otro usuario, 403, antes de abrir el
         stream.'
       operationId: run_wallet_agent_agents_wallet_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: accept
+        in: header
+        required: false
+        schema:
+          type: string
+          default: text/event-stream
+          title: Accept
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/RunAgentInput'
-        required: true
       responses:
         '200':
           description: Successful Response
@@ -329,8 +339,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-      security:
-      - HTTPBearer: []
 components:
   schemas:
     ActivityMessage:
