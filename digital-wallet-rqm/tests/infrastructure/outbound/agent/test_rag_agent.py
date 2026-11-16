@@ -5,7 +5,7 @@ import pytest
 from langchain_core.documents import Document
 from langchain_core.embeddings import DeterministicFakeEmbedding
 from langchain_core.language_models import LanguageModelInput
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.prompt_values import PromptValue
 from langchain_core.runnables import Runnable, RunnableConfig, RunnableLambda
 from langchain_core.tools import BaseTool
@@ -153,3 +153,21 @@ def test_interface_route_ends_with_the_client_tool_call(
     # El run termina en la tool call: el interpreter no redacta nada, el navegador la ejecuta
     assert result["messages"][-1].tool_calls[0]["name"] == "set_theme"
     assert interpreter_input == []
+
+
+def _fail_if_called(*args: object, **kwargs: object) -> None:
+    raise AssertionError("el analyzer no debe correr con el resultado de una tool del cliente")
+
+
+def test_client_tool_result_goes_straight_to_interpreter(
+    monkeypatch: pytest.MonkeyPatch, interpreter_input: list[str]
+) -> None:
+    monkeypatch.setattr(analyzer, "get_llm", _fail_if_called)
+    call = AIMessage(content="", tool_calls=[{"name": "set_font", "args": {"font": "Roboto"}, "id": "c1"}])
+    messages = [HumanMessage(content="cambia a Roboto"), call, ToolMessage(content="ok: Roboto", tool_call_id="c1")]
+
+    result = build_rag_agent().invoke({"messages": messages}, context=_context())
+
+    # Sin loop: no vuelve a interface, el interpreter confirma con el resultado del navegador
+    assert "set_font: ok: Roboto" in interpreter_input[0]
+    assert result["response"] == "respuesta 1"

@@ -5,6 +5,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
+from digital_wallet_rqm.infrastructure.outbound.agent.messages import is_client_tool_result
 from digital_wallet_rqm.infrastructure.outbound.agent.nodes.analyzer import node_analyzer
 from digital_wallet_rqm.infrastructure.outbound.agent.nodes.ingest import node_ingest
 from digital_wallet_rqm.infrastructure.outbound.agent.nodes.interface import node_interface
@@ -32,6 +33,12 @@ def decide_route_node_path(state: BankState) -> Literal["retrieve", "bank_tools"
             return "interpreter"
 
 
+def decide_after_ingest(state: BankState) -> Literal["analyzer", "interpreter"]:
+    """Con el resultado de una tool del navegador no se vuelve a clasificar: se confirma directo"""
+    # Sin esto, "question" sigue siendo el pedido original y el analyzer volvería a interface (loop)
+    return "interpreter" if is_client_tool_result(state["messages"]) else "analyzer"
+
+
 def build_rag_agent(checkpointer: BaseCheckpointSaver[str] | None = None) -> RagAgent:
     """Compila el grafo; el vector store llega por context=GraphContext(...) en cada invoke."""
     builder = StateGraph(BankState, context_schema=GraphContext, input_schema=AgentInput)
@@ -43,7 +50,11 @@ def build_rag_agent(checkpointer: BaseCheckpointSaver[str] | None = None) -> Rag
     builder.add_node("interpreter", node_interpreter)
 
     builder.add_edge(START, "ingest")
-    builder.add_edge("ingest", "analyzer")
+    builder.add_conditional_edges(
+        source="ingest",
+        path=decide_after_ingest,
+        path_map={"analyzer": "analyzer", "interpreter": "interpreter"},
+    )
     builder.add_conditional_edges(
         source="analyzer",
         path=decide_route_node_path,

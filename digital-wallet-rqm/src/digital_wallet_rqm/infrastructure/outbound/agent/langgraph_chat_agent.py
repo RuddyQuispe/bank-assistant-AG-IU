@@ -5,6 +5,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from digital_wallet_rqm.application.ports.chat_agent import ChatAgent
 from digital_wallet_rqm.domain.models import ChatMessage, CurrentUser
 from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
+from digital_wallet_rqm.infrastructure.outbound.agent.messages import is_visible_in_chat
 from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import RagAgent
 from digital_wallet_rqm.infrastructure.outbound.persistence.checkpointer import get_session_messages
 
@@ -30,7 +31,9 @@ class LangGraphChatAgent(ChatAgent):
 
     async def history(self, session_id: str) -> list[ChatMessage]:
         messages = await get_session_messages(self.graph, session_id)
-        return [ChatMessage(role=message.type, content=message.text) for message in messages]
+        return [
+            ChatMessage(role=message.type, content=message.text) for message in messages if is_visible_in_chat(message)
+        ]
 
     async def forget(self, session_id: str) -> None:
         await self.checkpointer.adelete_thread(session_id)

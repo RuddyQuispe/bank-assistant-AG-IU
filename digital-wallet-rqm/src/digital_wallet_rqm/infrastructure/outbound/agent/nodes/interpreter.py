@@ -1,4 +1,8 @@
-from digital_wallet_rqm.infrastructure.outbound.agent.messages import format_recent_context
+from digital_wallet_rqm.infrastructure.outbound.agent.messages import (
+    format_client_tool_results,
+    format_recent_context,
+    is_client_tool_result,
+)
 from digital_wallet_rqm.infrastructure.outbound.agent.prompts.interpreter_prompt import INTERPRETER_PROMPT
 from digital_wallet_rqm.infrastructure.outbound.agent.state.bank_state import BankState, InterpreterUpdate
 from digital_wallet_rqm.infrastructure.outbound.llm.llm_model import get_llm
@@ -9,6 +13,9 @@ _NO_INFORMATION = "Sin información disponible"
 
 def _format_information(state: BankState) -> str:
     """Arma la información que juntó el nodo anterior según la ruta"""
+    # El navegador devolvió el resultado de su tool: se confirma eso (la ruta es la del turno anterior)
+    if is_client_tool_result(state["messages"]):
+        return f"Acción aplicada en la app del cliente:\n{format_client_tool_results(state["messages"])}"
     route = state.get("route")
     if route == "retrieve":
         docs = state.get("retrieve_docs", [])

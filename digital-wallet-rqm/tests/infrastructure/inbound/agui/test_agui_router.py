@@ -29,7 +29,7 @@ from digital_wallet_rqm.infrastructure.inbound.dependencies import (
     get_vector_store,
 )
 from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
-from digital_wallet_rqm.infrastructure.outbound.agent.nodes import analyzer, interface
+from digital_wallet_rqm.infrastructure.outbound.agent.nodes import analyzer, interface, interpreter
 from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import HIDDEN_FROM_CHAT, build_rag_agent
 from digital_wallet_rqm.infrastructure.outbound.agent.route_decision import RouteDecision
 from digital_wallet_rqm.infrastructure.outbound.agent.state.bank_state import BankState
@@ -250,6 +250,33 @@ def test_client_tool_call_of_the_interface_node_reaches_the_stream(
     assert calls[0]["toolCallName"] == "set_theme"
     assert json.loads(calls[1]["delta"]) == {"theme": "dark"}
     assert events[-1]["type"] == "RUN_FINISHED"
+
+
+def test_client_tool_result_gets_a_text_confirmation(
+    client: TestClient, env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    decision = RouteDecision(route="interface", reason="pide una fuente")
+    monkeypatch.setattr(analyzer, "get_llm", lambda temperature, response_format: RunnableLambda(lambda _: decision))
+    monkeypatch.setattr(interface, "get_llm", lambda temperature: _ToolCallingChatModel(messages=iter([])))
+    confirmation = GenericFakeChatModel(messages=iter([AIMessage(content="Listo, apliqué el modo oscuro.")]))
+    monkeypatch.setattr(interpreter, "get_llm", lambda temperature: confirmation)
+    env.graph = build_rag_agent(checkpointer=InMemorySaver())
+
+    # 1. Primer run: termina en la tool call; el frontend se queda con el snapshot de mensajes
+    first = _events(client.post("/agents/wallet", json=_run_input("s1", "ponme el modo oscuro", [SET_THEME])).text)
+    snapshot = next(event for event in first if event["type"] == "MESSAGES_SNAPSHOT")["messages"]
+
+    # 2. El navegador ejecutó set_theme y devuelve el resultado en un run nuevo
+    tool_result = {"id": "t-1", "role": "tool", "toolCallId": "call-1", "content": "ok: dark"}
+    body = {**_run_input("s1", tools=[SET_THEME]), "runId": "run-2", "messages": [*snapshot, tool_result]}
+    second = _events(client.post("/agents/wallet", json=body).text)
+
+    text = "".join(event["delta"] for event in second if event["type"] == "TEXT_MESSAGE_CONTENT")
+    assert text == "Listo, apliqué el modo oscuro."
+    assert not [event for event in second if event["type"].startswith("TOOL_CALL_")]
+    # El historial queda con una sola tool call (sin duplicados) y su resultado
+    final = next(event for event in second if event["type"] == "MESSAGES_SNAPSHOT")["messages"]
+    assert [message["role"] for message in final] == ["user", "assistant", "tool", "assistant"]
 
 
 def test_failed_run_ends_with_run_error_and_records_nothing(client: TestClient, env: Env) -> None:

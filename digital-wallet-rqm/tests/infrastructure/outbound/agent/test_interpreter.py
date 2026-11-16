@@ -1,5 +1,5 @@
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.prompt_values import PromptValue
 from langchain_core.runnables import RunnableLambda
 
@@ -103,3 +103,18 @@ def test_appends_the_llm_message_itself_so_the_stream_id_matches(monkeypatch: py
     result = node_interpreter(state)
 
     assert result["messages"][0].id == "llm-message"
+
+
+def test_client_tool_result_is_sent_as_information(monkeypatch: pytest.MonkeyPatch) -> None:
+    llm = _patch_llm(monkeypatch)
+    call = AIMessage(content="", tool_calls=[{"name": "set_font", "args": {"font": "Roboto"}, "id": "c1"}])
+    state = {
+        "messages": [HumanMessage(content="cambia a Roboto"), call, ToolMessage(content="ok: Roboto", tool_call_id="c1")],
+        "question": "cambia a Roboto",
+        # La ruta del turno anterior queda en el checkpoint: el resultado de la tool manda igual
+        "route": "interface",
+    }
+
+    node_interpreter(state)
+
+    assert "Información: Acción aplicada en la app del cliente:\nset_font: ok: Roboto" in llm.human

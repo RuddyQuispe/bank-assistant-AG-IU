@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 
 
 def format_recent_context(messages: Sequence[BaseMessage], limit: int = 2) -> str:
@@ -12,3 +12,30 @@ def format_recent_context(messages: Sequence[BaseMessage], limit: int = 2) -> st
         for message in messages[-limit:]
         if message.content
     )
+
+
+def is_client_tool_result(messages: Sequence[BaseMessage]) -> bool:
+    """True si el run trae el resultado de una tool del navegador (el último mensaje es de tipo tool)"""
+    return bool(messages) and isinstance(messages[-1], ToolMessage)
+
+
+def format_client_tool_results(messages: Sequence[BaseMessage]) -> str:
+    """Resultados de las tools del navegador al final del historial, como 'set_font: ok: Roboto'"""
+    # El nombre de la tool está en la tool call del AIMessage; el ToolMessage solo trae su id
+    names = {
+        call["id"]: call["name"]
+        for message in messages
+        if isinstance(message, AIMessage)
+        for call in message.tool_calls
+    }
+    trailing: list[ToolMessage] = []
+    for message in reversed(messages):
+        if not isinstance(message, ToolMessage):
+            break
+        trailing.insert(0, message)
+    return "\n".join(f"{names.get(message.tool_call_id, 'tool')}: {message.text}" for message in trailing)
+
+
+def is_visible_in_chat(message: BaseMessage) -> bool:
+    """Mensajes que ve el usuario: los suyos y las respuestas con texto (no tool calls ni sus resultados)"""
+    return message.type in ("human", "ai") and bool(message.text)

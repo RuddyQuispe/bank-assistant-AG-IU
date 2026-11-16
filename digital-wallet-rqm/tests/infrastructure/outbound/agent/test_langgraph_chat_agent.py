@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
 
 from digital_wallet_rqm.domain.models import ChatMessage, CurrentUser
@@ -50,6 +50,20 @@ async def test_history_keeps_both_turns_per_session(agent: LangGraphChatAgent) -
         ChatMessage(role="ai", content="eco: hola"),
         ChatMessage(role="human", content="saldo"),
         ChatMessage(role="ai", content="eco: saldo"),
+    ]
+
+
+async def test_history_hides_client_tool_calls_and_their_results(agent: LangGraphChatAgent) -> None:
+    # Un turno de interface: tool call sin texto, resultado del navegador y la confirmación del agente
+    call = AIMessage(content="", tool_calls=[{"name": "set_font", "args": {"font": "Roboto"}, "id": "c1"}])
+    messages = [HumanMessage(content="cambia a Roboto"), call, ToolMessage(content="ok: Roboto", tool_call_id="c1")]
+    await agent.graph.aupdate_state(
+        {"configurable": {"thread_id": "s1"}}, {"messages": [*messages, AIMessage(content="Listo, usé Roboto.")]}
+    )
+
+    assert await agent.history("s1") == [
+        ChatMessage(role="human", content="cambia a Roboto"),
+        ChatMessage(role="ai", content="Listo, usé Roboto."),
     ]
 
 
