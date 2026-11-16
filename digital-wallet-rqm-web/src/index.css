@@ -1,5 +1,6 @@
 /* App-wide tweaks on top of Bootstrap. */
 body {
   min-height: 100vh;
-  background: linear-gradient(135deg, #0d6efd 0%, #6610f2 100%);
+  /* El agente puede cambiar el fondo con la tool set_background (ver tools/appearance-tools.ts) */
+  background: var(--app-background, linear-gradient(135deg, #0d6efd 0%, #6610f2 100%));
 }

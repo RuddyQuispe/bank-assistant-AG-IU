@@ -65,7 +65,7 @@ export function ChatScreen({ nickname, token, onLogout }: ChatScreenProps) {
 
   return (
     <div className="card shadow-lg border-0 overflow-hidden" style={{ maxWidth: 1000, width: '100%', height: '80vh' }}>
-      <div className="card-header bg-white d-flex justify-content-between align-items-center py-3">
+      <div className="card-header bg-body d-flex justify-content-between align-items-center py-3">
         <div>
           <div className="fw-bold">Digital Wallet</div>
           <div className="small text-body-secondary">Signed in as {nickname}</div>
@@ -76,7 +76,7 @@ export function ChatScreen({ nickname, token, onLogout }: ChatScreenProps) {
       </div>
       {error && <div className="alert alert-danger rounded-0 py-2 small mb-0">{error}</div>}
       <div className="d-flex flex-grow-1" style={{ minHeight: 0 }}>
-        <aside className="border-end bg-white" style={{ width: 260, flexShrink: 0 }}>
+        <aside className="border-end bg-body" style={{ width: 260, flexShrink: 0 }}>
           <SessionList
             sessions={sessions}
             activeId={activeId}
