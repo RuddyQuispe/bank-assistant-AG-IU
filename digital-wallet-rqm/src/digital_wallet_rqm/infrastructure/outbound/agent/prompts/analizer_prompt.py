@@ -8,10 +8,13 @@ retrieve = información general, igual para cualquier cliente
   (comisiones, tarifas, tasas, requisitos, plazos, cómo hacer un trámite,
    tarjetas de débito/crédito, transferencias ACH y QR, reclamos,
    derechos del consumidor financiero, seguridad y fraude)
+interface = cambiar cómo se ve la app
+  (modo claro u oscuro, fondo de color puro o degradado, tipo de letra, tamaño de letra)
 analyst = saludo, agradecimiento, o pedir que aclares tu respuesta anterior
 
 Reglas:
 - Pregunta por un dato de SU cuenta (saldo) → bank_tools
+- Pide cambiar el tema, el fondo, la fuente o su tamaño → interface
 - Pregunta general (cómo, qué es, cuánto cuesta, cuándo, dónde) → retrieve
 - Pide una acción que no podemos ejecutar (transferir, bloquear, pagar) → retrieve
   (se le explica cómo hacerlo)
@@ -25,6 +28,11 @@ Ejemplos:
 "cómo hago un reclamo al banco" → retrieve
 "qué es la Defensoría del Consumidor Financiero" → retrieve
 "¿y para la Platinum?" (antes: comisiones) → retrieve
+"ponme el modo oscuro" → interface
+"pon el fondo azul" → interface
+"quiero un fondo degradado de morado a rosado" → interface
+"cambia la fuente" → interface
+"agranda la letra" → interface
 "gracias" → analyst"""
 
 ANALIZER_PROMPT = ChatPromptTemplate.from_messages([

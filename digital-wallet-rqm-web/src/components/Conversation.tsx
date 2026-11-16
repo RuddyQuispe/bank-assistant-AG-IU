@@ -12,6 +12,7 @@ const STEP_LABELS: Record<string, string> = {
   analyzer: 'Understanding what you need…',
   retrieve: 'Searching the knowledge base…',
   bank_tools: 'Checking your account…',
+  interface: 'Updating the app…',
   interpreter: 'Writing the answer…',
 }
 

@@ -70,5 +70,10 @@ class WalletAGUIAdapter(LangGraphAgent):  # type: ignore[misc]
 
 def _is_hidden_tool_call(event: BaseEvent) -> bool:
     raw_event = event.raw_event
-    metadata = raw_event.get("metadata") if isinstance(raw_event, dict) else None
+    if not isinstance(raw_event, dict):
+        return False
+    # Emitida a mano por el nodo (manually_emit_tool_call): es explícita, nunca se oculta
+    if raw_event.get("event") == "on_custom_event":
+        return False
+    metadata = raw_event.get("metadata")
     return isinstance(metadata, dict) and metadata.get("emit-tool-calls") is False

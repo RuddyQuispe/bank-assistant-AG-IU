@@ -60,3 +60,9 @@ def test_sends_last_two_messages_as_context(monkeypatch):
     node_analyzer(state)
 
     assert llm.human == "Contexto previo: IA: Tu saldo es 100\nUsuario: y en dólares?\nMensaje: y en dólares?"
+
+
+def test_returns_interface_route_for_ui_requests(monkeypatch):
+    _patch_llm(monkeypatch, RouteDecision(route="interface", reason="pide modo oscuro"))
+
+    assert node_analyzer(_state("ponme el modo oscuro")) == {"route": "interface"}

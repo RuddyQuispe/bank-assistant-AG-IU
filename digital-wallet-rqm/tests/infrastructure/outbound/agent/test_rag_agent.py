@@ -14,7 +14,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from digital_wallet_rqm.domain.models import CurrentUser
 from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
-from digital_wallet_rqm.infrastructure.outbound.agent.nodes import analyzer, interpreter, tools
+from digital_wallet_rqm.infrastructure.outbound.agent.nodes import analyzer, interface, interpreter, tools
 from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import RagAgent, build_rag_agent
 from digital_wallet_rqm.infrastructure.outbound.agent.route_decision import RouteDecision
 from digital_wallet_rqm.infrastructure.outbound.agent.types import Route
@@ -72,7 +72,7 @@ def _ask(question: str, graph: RagAgent | None = None, config: RunnableConfig | 
 def test_graph_compiles_with_all_nodes() -> None:
     graph = build_rag_agent()
 
-    assert {"ingest", "analyzer", "retrieve", "bank_tools", "interpreter"} <= set(graph.get_graph().nodes)
+    assert {"ingest", "analyzer", "retrieve", "bank_tools", "interface", "interpreter"} <= set(graph.get_graph().nodes)
 
 
 def test_bank_tools_route_runs_bank_tools_node(monkeypatch: pytest.MonkeyPatch, interpreter_input: list[str]) -> None:
@@ -131,3 +131,25 @@ def test_client_tools_from_input_reach_the_state(
     )
 
     assert result["tools"] == client_tools
+
+
+class _FakeInterfaceLLM:
+    def bind_tools(self, bound: Sequence[dict[str, Any]]) -> Runnable[LanguageModelInput, AIMessage]:
+        call = AIMessage(content="", tool_calls=[{"name": "set_theme", "args": {"theme": "dark"}, "id": "call-1"}])
+        return RunnableLambda(lambda _: call)
+
+
+def test_interface_route_ends_with_the_client_tool_call(
+    monkeypatch: pytest.MonkeyPatch, interpreter_input: list[str]
+) -> None:
+    _route_to(monkeypatch, "interface")
+    monkeypatch.setattr(interface, "get_llm", lambda temperature: _FakeInterfaceLLM())
+    client_tools = [{"name": "set_theme", "description": "Switch theme", "parameters": {"type": "object"}}]
+
+    result = build_rag_agent().invoke(
+        {"messages": [HumanMessage(content="modo oscuro")], "tools": client_tools}, context=_context()
+    )
+
+    # El run termina en la tool call: el interpreter no redacta nada, el navegador la ejecuta
+    assert result["messages"][-1].tool_calls[0]["name"] == "set_theme"
+    assert interpreter_input == []

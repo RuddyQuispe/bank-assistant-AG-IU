@@ -7,6 +7,7 @@ from langgraph.graph.state import CompiledStateGraph
 from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
 from digital_wallet_rqm.infrastructure.outbound.agent.nodes.analyzer import node_analyzer
 from digital_wallet_rqm.infrastructure.outbound.agent.nodes.ingest import node_ingest
+from digital_wallet_rqm.infrastructure.outbound.agent.nodes.interface import node_interface
 from digital_wallet_rqm.infrastructure.outbound.agent.nodes.interpreter import node_interpreter
 from digital_wallet_rqm.infrastructure.outbound.agent.nodes.retrieve import node_retrieve
 from digital_wallet_rqm.infrastructure.outbound.agent.nodes.tools import node_tools
@@ -17,13 +18,15 @@ RagAgent = CompiledStateGraph[BankState, GraphContext, AgentInput, BankState]
 
 # Metadata de nodos internos: AG-UI no emite el texto ni las tool calls de sus LLM (ruteo, consulta, tools)
 HIDDEN_FROM_CHAT = {"emit-messages": False, "emit-tool-calls": False}
+# El nodo interface emite sus tool calls a mano (completas); su texto sí llega al chat
+TOOL_CALLS_EMITTED_BY_NODE = {"emit-tool-calls": False}
 
 
-def decide_route_node_path(state: BankState) -> Literal["retrieve", "bank_tools", "interpreter"]:
+def decide_route_node_path(state: BankState) -> Literal["retrieve", "bank_tools", "interface", "interpreter"]:
     """Router de la arista condicional (no es un nodo: no modifica el estado)."""
     # match exhaustivo: si se agrega una ruta nueva a Route, mypy avisa que falta manejarla
     match state["route"]:
-        case "retrieve" | "bank_tools" as route:
+        case "retrieve" | "bank_tools" | "interface" as route:
             return route
         case "analyst":
             return "interpreter"
@@ -36,6 +39,7 @@ def build_rag_agent(checkpointer: BaseCheckpointSaver[str] | None = None) -> Rag
     builder.add_node("analyzer", node_analyzer, metadata=HIDDEN_FROM_CHAT)
     builder.add_node("retrieve", node_retrieve, metadata=HIDDEN_FROM_CHAT)
     builder.add_node("bank_tools", node_tools, metadata=HIDDEN_FROM_CHAT)
+    builder.add_node("interface", node_interface, metadata=TOOL_CALLS_EMITTED_BY_NODE)
     builder.add_node("interpreter", node_interpreter)
 
     builder.add_edge(START, "ingest")
@@ -46,11 +50,13 @@ def build_rag_agent(checkpointer: BaseCheckpointSaver[str] | None = None) -> Rag
         path_map={
             "retrieve": "retrieve",
             "bank_tools": "bank_tools",
+            "interface": "interface",
             "interpreter": "interpreter"
         }
     )
 
     builder.add_edge("retrieve", "interpreter")
     builder.add_edge("bank_tools", "interpreter")
+    builder.add_edge("interface", END)
     builder.add_edge("interpreter", END)
     return builder.compile(checkpointer=checkpointer)

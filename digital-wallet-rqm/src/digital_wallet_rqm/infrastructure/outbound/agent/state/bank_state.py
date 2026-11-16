@@ -57,6 +57,11 @@ class ToolsUpdate(TypedDict):
     tool_results: list[ToolResult]
 
 
+class InterfaceUpdate(TypedDict):
+    response: str
+    messages: list[AnyMessage]
+
+
 class InterpreterUpdate(TypedDict):
     response: str
     messages: list[AnyMessage]

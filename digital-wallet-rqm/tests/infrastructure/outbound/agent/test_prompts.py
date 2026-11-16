@@ -26,3 +26,16 @@ def test_interpreter_asks_for_currency_and_sources() -> None:
     assert "Bolivia" in system.content
     assert "(Bs o USD)" in system.content
     assert "Cita las fuentes" in system.content
+
+
+def test_analyzer_offers_interface_route_for_theme_background_and_font() -> None:
+    system, _ = ANALIZER_PROMPT.format_messages(context="", question="")
+
+    assert "interface = cambiar cómo se ve la app" in system.content
+    assert "fondo de color puro o degradado" in system.content
+    assert "tamaño de letra" in system.content
+    assert '"ponme el modo oscuro" → interface' in system.content
+    assert '"pon el fondo azul" → interface' in system.content
+    assert '"quiero un fondo degradado de morado a rosado" → interface' in system.content
+    assert '"cambia la fuente" → interface' in system.content
+    assert '"agranda la letra" → interface' in system.content

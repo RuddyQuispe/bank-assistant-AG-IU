@@ -7,7 +7,9 @@ import pytest
 from fastapi.testclient import TestClient
 from langchain_core.embeddings import DeterministicFakeEmbedding
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, AIMessageChunk
+from langchain_core.outputs import ChatGenerationChunk
+from langchain_core.runnables import RunnableLambda
 from langchain_core.tools import tool
 from langchain_core.vectorstores import InMemoryVectorStore
 from langgraph.checkpoint.memory import InMemorySaver
@@ -27,7 +29,9 @@ from digital_wallet_rqm.infrastructure.inbound.dependencies import (
     get_vector_store,
 )
 from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
-from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import HIDDEN_FROM_CHAT
+from digital_wallet_rqm.infrastructure.outbound.agent.nodes import analyzer, interface
+from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import HIDDEN_FROM_CHAT, build_rag_agent
+from digital_wallet_rqm.infrastructure.outbound.agent.route_decision import RouteDecision
 from digital_wallet_rqm.infrastructure.outbound.agent.state.bank_state import BankState
 from digital_wallet_rqm.infrastructure.outbound.persistence.repositories import DemoUserRepository
 from digital_wallet_rqm.infrastructure.outbound.security.jwt_token_service import JwtTokenService
@@ -144,13 +148,13 @@ def client(env: Env) -> TestClient:
     return TestClient(app)
 
 
-def _run_input(thread_id: str, text: str = "hola") -> dict[str, Any]:
+def _run_input(thread_id: str, text: str = "hola", tools: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     return {
         "threadId": thread_id,
         "runId": "run-1",
         "state": {},
         "messages": [{"id": "m-1", "role": "user", "content": text}],
-        "tools": [],
+        "tools": tools or [],
         "context": [],
         "forwardedProps": {},
     }
@@ -206,6 +210,46 @@ def test_tool_call_of_a_visible_node_reaches_the_stream(client: TestClient, env:
     env.graph = _build_graph((_tool_node, None), (_answer_node, None))
 
     assert _tool_call_types(client) == ["TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END"]
+
+
+SET_THEME = {
+    "name": "set_theme",
+    "description": "Cambia el tema de la app",
+    "parameters": {"type": "object", "properties": {"theme": {"type": "string", "enum": ["light", "dark"]}}},
+}
+
+
+class _ToolCallingChatModel(GenericFakeChatModel):
+    """Chat model falso que streamea una tool call, como hace Gemini con bind_tools"""
+
+    def bind_tools(self, tools: Any, **kwargs: Any) -> "_ToolCallingChatModel":
+        return self
+
+    def _stream(self, *args: Any, **kwargs: Any) -> Iterator[ChatGenerationChunk]:
+        chunk = AIMessageChunk(
+            content="",
+            tool_call_chunks=[{"name": "set_theme", "args": '{"theme": "dark"}', "id": "call-1", "index": 0}],
+        )
+        yield ChatGenerationChunk(message=chunk)
+
+
+def test_client_tool_call_of_the_interface_node_reaches_the_stream(
+    client: TestClient, env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    decision = RouteDecision(route="interface", reason="pide modo oscuro")
+    monkeypatch.setattr(analyzer, "get_llm", lambda temperature, response_format: RunnableLambda(lambda _: decision))
+    model = _ToolCallingChatModel(messages=iter([]))
+    monkeypatch.setattr(interface, "get_llm", lambda temperature: model)
+    env.graph = build_rag_agent(checkpointer=InMemorySaver())
+
+    body = _run_input("s1", "ponme el modo oscuro", tools=[SET_THEME])
+    events = _events(client.post("/agents/wallet", json=body).text)
+
+    calls = [event for event in events if event["type"].startswith("TOOL_CALL_")]
+    assert [event["type"] for event in calls] == ["TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END"]
+    assert calls[0]["toolCallName"] == "set_theme"
+    assert json.loads(calls[1]["delta"]) == {"theme": "dark"}
+    assert events[-1]["type"] == "RUN_FINISHED"
 
 
 def test_failed_run_ends_with_run_error_and_records_nothing(client: TestClient, env: Env) -> None:
