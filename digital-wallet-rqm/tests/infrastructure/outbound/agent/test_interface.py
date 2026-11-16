@@ -138,3 +138,7 @@ def test_tool_call_without_id_gets_one_shared_by_event_and_history(monkeypatch: 
 def test_prompt_covers_everything_the_analyzer_routes_here() -> None:
     for topic in ("claro u oscuro", "color puro o degradado", "tipo de letra", "tamaño de letra"):
         assert topic in INTERFACE_SYSTEM_PROMPT
+
+
+def test_prompt_asks_to_turn_color_names_into_css_colors() -> None:
+    assert "conviértelo tú a hex o rgb/rgba" in INTERFACE_SYSTEM_PROMPT
