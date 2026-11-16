@@ -1,4 +1,4 @@
-import type { Tool } from '@ag-ui/client'
+import { randomUUID, type Tool, type ToolMessage } from '@ag-ui/client'
 
 // Tools del cliente: el backend solo recibe su descripción (name, description, parameters).
 // Gemini elige una y el navegador la ejecuta acá; los enum son los únicos valores permitidos.
@@ -120,4 +120,16 @@ export function runAppearanceTool(name: string, rawArgs: unknown): string {
     default:
       return `error: tool desconocida "${name}"`
   }
+}
+
+// Ejecuta la tool y arma el mensaje con su resultado, que se devuelve al agente para que confirme con texto.
+// Nunca lanza: un fallo al aplicar el estilo se informa como error en el resultado.
+export function runToolCall(toolCallId: string, name: string, args: unknown): ToolMessage {
+  let content: string
+  try {
+    content = runAppearanceTool(name, args)
+  } catch (err) {
+    content = `error: ${err instanceof Error ? err.message : String(err)}`
+  }
+  return { id: randomUUID(), role: 'tool', toolCallId, content }
 }

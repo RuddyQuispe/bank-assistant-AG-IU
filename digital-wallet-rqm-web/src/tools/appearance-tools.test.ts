@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { APPEARANCE_TOOLS, runAppearanceTool } from './appearance-tools'
+import { APPEARANCE_TOOLS, runAppearanceTool, runToolCall } from './appearance-tools'
 
 const root = document.documentElement
 
@@ -9,6 +9,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   root.removeAttribute('data-bs-theme')
   root.removeAttribute('style')
@@ -113,5 +114,29 @@ describe('runAppearanceTool', () => {
 
   it('returns an error instead of throwing when the args are missing', () => {
     expect(runAppearanceTool('set_theme', undefined)).toMatch(/^error:/)
+  })
+})
+
+describe('runToolCall', () => {
+  it('applies the tool and returns its result as a tool message for the agent', () => {
+    const message = runToolCall('call-1', 'set_theme', { theme: 'dark' })
+
+    expect(root.getAttribute('data-bs-theme')).toBe('dark')
+    expect(message).toMatchObject({ role: 'tool', toolCallId: 'call-1', content: 'ok: dark' })
+    expect(message.id).toBeTruthy()
+  })
+
+  it('reports a rejected value so the agent can explain it', () => {
+    const message = runToolCall('call-2', 'set_font', { font: 'Comic Sans' })
+
+    expect(message).toMatchObject({ toolCallId: 'call-2', content: 'error: valor no permitido "Comic Sans"' })
+  })
+
+  it('turns an unexpected failure into an error result instead of throwing', () => {
+    vi.spyOn(root, 'setAttribute').mockImplementation(() => {
+      throw new Error('DOM bloqueado')
+    })
+
+    expect(runToolCall('call-3', 'set_theme', { theme: 'dark' }).content).toBe('error: DOM bloqueado')
   })
 })

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { randomUUID } from '@ag-ui/client'
+import { randomUUID, type ToolMessage } from '@ag-ui/client'
 import { createWalletAgent } from '../api/agent'
 import { toErrorMessage } from '../api/config'
 import { getHistory } from '../api/sessions'
-import { APPEARANCE_TOOLS, runAppearanceTool } from '../tools/appearance-tools'
+import { APPEARANCE_TOOLS, runToolCall } from '../tools/appearance-tools'
 import type { ChatMessage } from '../models/chat/chat-message.model'
 import { ChatPanel } from './ChatPanel'
 
@@ -65,7 +65,9 @@ export function Conversation({ token, sessionId, onRunFinished }: ConversationPr
     setError(null)
 
     // 3. Ejecuta el agente: cada evento AG-UI actualiza la pantalla apenas llega.
-    try {
+    //    Devuelve el resultado de cada tool del navegador que pidió el agente.
+    async function runOnce(): Promise<ToolMessage[]> {
+      const toolResults: ToolMessage[] = []
       await agent.runAgent(
         // El backend recibe qué tools tiene el navegador; si el agente pide una, llega como TOOL_CALL_*.
         { tools: APPEARANCE_TOOLS },
@@ -84,14 +86,9 @@ export function Conversation({ token, sessionId, onRunFinished }: ConversationPr
             const text = textMessageBuffer + event.delta
             setMessages((current) => current.map((m) => (m.id === event.messageId ? { ...m, content: text } : m)))
           },
-          // El agente pidió una tool del navegador (tema, fondo, fuente): toolCallArgs ya viene parseado.
-          onToolCallEndEvent: ({ toolCallName, toolCallArgs }) => {
-            // Un fallo al aplicar el estilo no debe cortar el stream de la respuesta
-            try {
-              runAppearanceTool(toolCallName, toolCallArgs)
-            } catch (err) {
-              console.error('Appearance tool failed', toolCallName, err)
-            }
+          // El agente pidió una tool del navegador (tema, fondo, fuente): se aplica y se guarda su resultado.
+          onToolCallEndEvent: ({ event, toolCallName, toolCallArgs }) => {
+            toolResults.push(runToolCall(event.toolCallId, toolCallName, toolCallArgs))
           },
           // El backend avisó un error dentro del stream.
           onRunErrorEvent: ({ event }) => {
@@ -99,8 +96,24 @@ export function Conversation({ token, sessionId, onRunFinished }: ConversationPr
           },
         },
       )
-      // 4. Avisa al padre para que refresque los títulos de la lista.
+      return toolResults
+    }
+
+    try {
+      const toolResults = await runOnce()
+      // 4. Avisa al padre para que refresque los títulos de la lista (aunque falle la confirmación).
       onRunFinished()
+      // 5. Si se ejecutaron tools, se devuelven sus resultados en un run más y el agente confirma con texto.
+      //    Ese run va directo a redactar (no pide tools), así que no hay un tercer run.
+      if (toolResults.length > 0) {
+        toolResults.forEach((result) => agent.addMessage(result))
+        try {
+          await runOnce()
+        } catch (err) {
+          // El estilo ya quedó aplicado: solo falló el mensaje de confirmación
+          setError(`The change was applied, but the confirmation failed: ${toErrorMessage(err)}`)
+        }
+      }
     } catch (err) {
       // Fallas de red o HTTP (401, 404...) llegan acá.
       setError(toErrorMessage(err))
