@@ -109,6 +109,8 @@ export function Conversation({ token, sessionId, onRunFinished }: ConversationPr
         toolResults.forEach((result) => agent.addMessage(result))
         try {
           await runOnce()
+          // La confirmación también consumió tokens: se refresca de nuevo
+          onRunFinished()
         } catch (err) {
           // El estilo ya quedó aplicado: solo falló el mensaje de confirmación
           setError(`The change was applied, but the confirmation failed: ${toErrorMessage(err)}`)
