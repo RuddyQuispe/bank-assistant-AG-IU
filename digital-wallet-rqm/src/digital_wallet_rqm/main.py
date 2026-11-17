@@ -8,16 +8,22 @@ from scalar_fastapi import Theme, get_scalar_api_reference
 
 from digital_wallet_rqm.application.auth_use_cases import AuthUseCases
 from digital_wallet_rqm.application.chat_use_cases import ChatUseCases
+from digital_wallet_rqm.application.usage_use_cases import UsageUseCases
+from digital_wallet_rqm.infrastructure.clock import business_today
 from digital_wallet_rqm.infrastructure.inbound.agui import agui_router
 from digital_wallet_rqm.infrastructure.inbound.error_schema import VALIDATION_ERROR_RESPONSE
 from digital_wallet_rqm.infrastructure.inbound.exception_handlers import register_exception_handlers
-from digital_wallet_rqm.infrastructure.inbound.rest.routers import auth_router, chat_router, index_router
+from digital_wallet_rqm.infrastructure.inbound.rest.routers import auth_router, chat_router, index_router, usage_router
 from digital_wallet_rqm.infrastructure.outbound.agent.langgraph_chat_agent import LangGraphChatAgent
 from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import build_rag_agent
 from digital_wallet_rqm.infrastructure.outbound.persistence.checkpointer import get_checkpointer
 from digital_wallet_rqm.infrastructure.outbound.persistence.database import get_engine
 from digital_wallet_rqm.infrastructure.outbound.persistence.legacy_sessions import import_legacy_sessions
-from digital_wallet_rqm.infrastructure.outbound.persistence.repositories import DemoUserRepository, SqlSessionRepository
+from digital_wallet_rqm.infrastructure.outbound.persistence.repositories import (
+    DemoUserRepository,
+    SqlSessionRepository,
+    SqlUsageRepository,
+)
 from digital_wallet_rqm.infrastructure.outbound.security.jwt_token_service import JwtTokenService
 from digital_wallet_rqm.infrastructure.outbound.vectorstore.document_indexer import DocumentIndexer
 from digital_wallet_rqm.infrastructure.outbound.vectorstore.vector_store import get_or_create_vector_store
@@ -52,11 +58,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Grafo y vector store se comparten entre el chat REST y el adaptador AG-UI
         app.state.rag_agent = build_rag_agent(checkpointer)
         app.state.vector_store = vector_store
+        # Consumo de tokens por usuario y por día, en la misma base: lo suma el chat y lo lee /usage
+        usage_repository = SqlUsageRepository(engine)
         # Caso de uso del chat (REST y AG-UI): recibe los adaptadores a través de sus puertos
         app.state.chat_use_cases = ChatUseCases(
             agent=LangGraphChatAgent(app.state.rag_agent, checkpointer, vector_store),
             sessions=SqlSessionRepository(engine),
+            usage=usage_repository,
+            today=business_today,
         )
+        app.state.usage_use_cases = UsageUseCases(usage=usage_repository, today=business_today)
         yield
 
 
@@ -87,6 +98,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router.router)
     app.include_router(chat_router.router)
     app.include_router(index_router.router)
+    app.include_router(usage_router.router)
     app.include_router(agui_router.router)
 
     if docs_enabled:

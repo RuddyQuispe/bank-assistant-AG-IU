@@ -30,3 +30,8 @@ NOT_FOUND_RESPONSE: dict[int | str, dict[str, Any]] = {
 FORBIDDEN_RESPONSE: dict[int | str, dict[str, Any]] = {
     403: {"model": ErrorResponse, "description": "La sesión pertenece a otro usuario"},
 }
+
+# Respuesta 400 para la documentación: rango de fechas inválido (la responde el handler de BadRequestError)
+BAD_REQUEST_RESPONSE: dict[int | str, dict[str, Any]] = {
+    400: {"model": ErrorResponse, "description": "El rango de fechas está invertido o supera un año"},
+}

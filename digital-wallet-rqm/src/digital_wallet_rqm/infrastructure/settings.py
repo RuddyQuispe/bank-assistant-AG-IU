@@ -41,6 +41,8 @@ class LangChainSettings:
     MEMORY_BACKEND: str = "sqlite"
     SQLITE_DB_PATH: Path = Path("./data/memory.db")
     DATABASE_URL: str | None = os.getenv("DATABASE_URL")
+    # consumo de tokens: el día se corta a la medianoche de esta zona horaria
+    USAGE_TIMEZONE: str = "America/La_Paz"
     # auth (JWT)
     JWT_SECRET: str = os.getenv("JWT_SECRET", "")
     JWT_ALGORITHM: str = "HS256"

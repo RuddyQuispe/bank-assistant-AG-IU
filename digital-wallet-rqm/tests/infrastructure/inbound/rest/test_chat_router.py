@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from digital_wallet_rqm.domain.errors import SessionForbiddenError, SessionNotFoundError
-from digital_wallet_rqm.domain.models import ChatAnswer, ChatMessage, ChatSession, CurrentUser
+from digital_wallet_rqm.domain.models import ChatAnswer, ChatMessage, ChatSession, CurrentUser, TokenUsage
 from digital_wallet_rqm.infrastructure.inbound.dependencies import get_chat_use_cases, get_current_user
 from digital_wallet_rqm.main import app
 
@@ -55,7 +55,7 @@ class FakeChatService:
     async def start_run(self, user: CurrentUser, session_id: str) -> None:
         self._check(session_id)
 
-    async def finish_run(self, session_id: str, question: str) -> None:
+    async def finish_run(self, user: CurrentUser, session_id: str, question: str | None, usage: TokenUsage) -> None:
         pass
 
 

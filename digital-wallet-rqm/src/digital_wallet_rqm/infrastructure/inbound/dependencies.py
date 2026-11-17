@@ -6,6 +6,7 @@ from langchain_core.vectorstores import VectorStore
 
 from digital_wallet_rqm.application.auth_use_cases import AuthUseCases
 from digital_wallet_rqm.application.chat_use_cases import ChatUseCases
+from digital_wallet_rqm.application.usage_use_cases import UsageUseCases
 from digital_wallet_rqm.domain.errors import UnauthorizedError
 from digital_wallet_rqm.domain.models import CurrentUser
 from digital_wallet_rqm.infrastructure.inbound.agui.wallet_agui_adapter import WalletAGUIAdapter
@@ -20,6 +21,12 @@ bearer_scheme = HTTPBearer(auto_error=False)
 def get_chat_use_cases(request: Request) -> ChatUseCases:
     """Entrega el servicio creado al arrancar la app (ver lifespan en main.py)"""
     use_cases: ChatUseCases = request.app.state.chat_use_cases
+    return use_cases
+
+
+def get_usage_use_cases(request: Request) -> UsageUseCases:
+    """Entrega la consulta de consumo creada al arrancar la app (ver lifespan en main.py)"""
+    use_cases: UsageUseCases = request.app.state.usage_use_cases
     return use_cases
 
 

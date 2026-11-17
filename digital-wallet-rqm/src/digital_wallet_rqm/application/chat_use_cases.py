@@ -1,6 +1,10 @@
+from collections.abc import Callable
+from datetime import date
+
 from digital_wallet_rqm.application.ports.chat_agent import ChatAgent
 from digital_wallet_rqm.application.ports.session_repository import SessionRepository
-from digital_wallet_rqm.domain.models import ChatAnswer, ChatMessage, ChatSession, CurrentUser
+from digital_wallet_rqm.application.ports.usage_repository import UsageRepository
+from digital_wallet_rqm.domain.models import ChatAnswer, ChatMessage, ChatSession, CurrentUser, TokenUsage
 
 
 class ChatUseCases:
@@ -11,9 +15,14 @@ class ChatUseCases:
     SessionForbiddenError.
     """
 
-    def __init__(self, agent: ChatAgent, sessions: SessionRepository) -> None:
+    def __init__(
+        self, agent: ChatAgent, sessions: SessionRepository, usage: UsageRepository, today: Callable[[], date]
+    ) -> None:
         self.agent = agent
         self.sessions = sessions
+        self.usage = usage
+        # Día actual en la zona horaria del negocio: el consumo se reinicia a la medianoche local
+        self.today = today
 
     async def create_session(self, user: CurrentUser) -> ChatSession:
         """Crea una sesión vacía; el id lo asigna el servidor"""
@@ -26,10 +35,11 @@ class ChatUseCases:
         else:
             await self.sessions.get_owned(user, session_id)
 
-        response = await self.agent.answer(question, session_id, user)
-        # Después del agente: si falla, la sesión no registra una actividad que no ocurrió
+        reply = await self.agent.answer(question, session_id, user)
+        # Después del agente: si falla, no se registra una actividad ni un consumo que no ocurrieron
         await self.sessions.record_question(session_id, question)
-        return ChatAnswer(session_id=session_id, response=response)
+        await self.usage.add(user.user_id, self.today(), reply.usage)
+        return ChatAnswer(session_id=session_id, response=reply.response)
 
     async def list_sessions(self, user: CurrentUser) -> list[ChatSession]:
         """Devuelve las sesiones del usuario, la de actividad más reciente primero"""
@@ -52,6 +62,11 @@ class ChatUseCases:
         """Autoriza un run en streaming sobre la sesión, antes de abrir el stream"""
         await self.sessions.get_owned(user, session_id)
 
-    async def finish_run(self, session_id: str, question: str) -> None:
-        """Registra la actividad de un run que terminó bien; confía en el start_run previo"""
-        await self.sessions.record_question(session_id, question)
+    async def finish_run(self, user: CurrentUser, session_id: str, question: str | None, usage: TokenUsage) -> None:
+        """Registra un run que terminó bien (pregunta y tokens); confía en el start_run previo.
+
+        Sin pregunta (un run que solo devuelve el resultado de una tool del navegador) igual suma sus tokens.
+        """
+        if question:
+            await self.sessions.record_question(session_id, question)
+        await self.usage.add(user.user_id, self.today(), usage)

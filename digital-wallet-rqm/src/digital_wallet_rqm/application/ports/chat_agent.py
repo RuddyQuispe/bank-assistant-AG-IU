@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from digital_wallet_rqm.domain.models import ChatMessage, CurrentUser
+from digital_wallet_rqm.domain.models import AgentReply, ChatMessage, CurrentUser
 
 
 class ChatAgent(ABC):
@@ -10,8 +10,8 @@ class ChatAgent(ABC):
     """
 
     @abstractmethod
-    async def answer(self, question: str, session_id: str, user: CurrentUser) -> str:
-        """Responde la pregunta dentro de la sesión y guarda la pregunta y la respuesta en su historial"""
+    async def answer(self, question: str, session_id: str, user: CurrentUser) -> AgentReply:
+        """Responde la pregunta dentro de la sesión, guarda ambas en su historial e informa los tokens del run"""
 
     @abstractmethod
     async def history(self, session_id: str) -> list[ChatMessage]:

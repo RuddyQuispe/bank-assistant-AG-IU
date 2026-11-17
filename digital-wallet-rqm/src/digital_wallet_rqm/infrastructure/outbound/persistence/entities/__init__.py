@@ -1,5 +1,6 @@
 # Importar aquí cada entidad nueva: create_all solo crea las tablas de las clases ya importadas
 from digital_wallet_rqm.infrastructure.outbound.persistence.entities.base import Base
 from digital_wallet_rqm.infrastructure.outbound.persistence.entities.session_record import SessionRecord
+from digital_wallet_rqm.infrastructure.outbound.persistence.entities.token_usage_record import TokenUsageRecord
 
-__all__ = ["Base", "SessionRecord"]
+__all__ = ["Base", "SessionRecord", "TokenUsageRecord"]

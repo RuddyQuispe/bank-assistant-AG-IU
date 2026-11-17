@@ -1,20 +1,31 @@
 """Reglas del chat probadas con dobles en memoria: sin LangGraph, sin base de datos, sin FastAPI"""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 
 from digital_wallet_rqm.application.chat_use_cases import ChatUseCases
 from digital_wallet_rqm.application.ports.chat_agent import ChatAgent
 from digital_wallet_rqm.application.ports.session_repository import SessionRepository
+from digital_wallet_rqm.application.ports.usage_repository import UsageRepository
 from digital_wallet_rqm.domain.errors import SessionForbiddenError, SessionNotFoundError
-from digital_wallet_rqm.domain.models import ChatMessage, ChatSession, CurrentUser, build_title
+from digital_wallet_rqm.domain.models import (
+    AgentReply,
+    ChatMessage,
+    ChatSession,
+    CurrentUser,
+    DailyUsage,
+    TokenUsage,
+    build_title,
+)
 
 pytestmark = pytest.mark.anyio
 
 RUDDY = CurrentUser(user_id="1", nickname="ruddy")
 OTHER = CurrentUser(user_id="2", nickname="otro")
+TODAY = date(2026, 11, 16)
+RUN_USAGE = TokenUsage(812, 95)
 
 
 class FakeAgent(ChatAgent):
@@ -25,13 +36,13 @@ class FakeAgent(ChatAgent):
         self.calls: list[str] = []
         self.fail = fail
 
-    async def answer(self, question: str, session_id: str, user: CurrentUser) -> str:
+    async def answer(self, question: str, session_id: str, user: CurrentUser) -> AgentReply:
         if self.fail:
             raise RuntimeError("el LLM no responde")
         response = f"eco: {question}"
         history = self.histories.setdefault(session_id, [])
         history += [ChatMessage("human", question), ChatMessage("ai", response)]
-        return response
+        return AgentReply(response, RUN_USAGE)
 
     async def history(self, session_id: str) -> list[ChatMessage]:
         return list(self.histories.get(session_id, []))
@@ -77,14 +88,36 @@ class FakeSessions(SessionRepository):
         self.rows.pop(session_id, None)
 
 
+class FakeUsage(UsageRepository):
+    """Consumo en memoria: guarda cada run sumado por (usuario, día)"""
+
+    def __init__(self) -> None:
+        self.rows: dict[tuple[str, date], DailyUsage] = {}
+
+    async def add(self, user_id: str, day: date, usage: TokenUsage) -> None:
+        row = self.rows.get((user_id, day), DailyUsage(day, 0, 0, 0))
+        self.rows[(user_id, day)] = DailyUsage(
+            day, row.input_tokens + usage.input_tokens, row.output_tokens + usage.output_tokens, row.runs + 1
+        )
+
+    async def list_for_user(self, user_id: str, start: date, end: date) -> list[DailyUsage]:
+        own = [row for (owner, day), row in self.rows.items() if owner == user_id and start <= day <= end]
+        return sorted(own, key=lambda row: row.day, reverse=True)
+
+
+@pytest.fixture
+def usage() -> FakeUsage:
+    return FakeUsage()
+
+
 @pytest.fixture
 def agent() -> FakeAgent:
     return FakeAgent()
 
 
 @pytest.fixture
-def chat(agent: FakeAgent) -> ChatUseCases:
-    return ChatUseCases(agent=agent, sessions=FakeSessions(agent.calls))
+def chat(agent: FakeAgent, usage: FakeUsage) -> ChatUseCases:
+    return ChatUseCases(agent=agent, sessions=FakeSessions(agent.calls), usage=usage, today=lambda: TODAY)
 
 
 async def test_ask_without_session_creates_one_with_a_server_uuid(chat: ChatUseCases) -> None:
@@ -123,16 +156,17 @@ async def test_created_session_has_no_title_until_the_first_question(chat: ChatU
     assert session.title is None
 
 
-async def test_failed_answer_records_no_activity(agent: FakeAgent) -> None:
+async def test_failed_answer_records_no_activity(agent: FakeAgent, usage: FakeUsage) -> None:
     agent.fail = True
     sessions = FakeSessions(agent.calls)
-    chat = ChatUseCases(agent=agent, sessions=sessions)
+    chat = ChatUseCases(agent=agent, sessions=sessions, usage=usage, today=lambda: TODAY)
     session = await chat.create_session(RUDDY)
 
     with pytest.raises(RuntimeError):
         await chat.ask("hola", RUDDY, session_id=session.session_id)
 
     assert sessions.rows[session.session_id] == session
+    assert usage.rows == {}
 
 
 async def test_history_comes_from_the_agent(chat: ChatUseCases) -> None:
@@ -210,9 +244,35 @@ async def test_start_run_on_another_users_session_is_forbidden(chat: ChatUseCase
 async def test_finish_run_titles_the_session_with_the_first_question(chat: ChatUseCases) -> None:
     session = await chat.create_session(RUDDY)
 
-    await chat.finish_run(session.session_id, "¿Cuánto cuesta un SPEI?")
-    await chat.finish_run(session.session_id, "gracias")
+    await chat.finish_run(RUDDY, session.session_id, "¿Cuánto cuesta un SPEI?", TokenUsage())
+    await chat.finish_run(RUDDY, session.session_id, "gracias", TokenUsage())
 
     [listed] = await chat.list_sessions(RUDDY)
     assert listed.title == "¿Cuánto cuesta un SPEI?"
     assert listed.updated_at > session.updated_at
+
+
+async def test_ask_adds_the_run_tokens_to_the_user_day(chat: ChatUseCases, usage: FakeUsage) -> None:
+    answer = await chat.ask("hola", RUDDY)
+    await chat.ask("saldo", RUDDY, session_id=answer.session_id)
+
+    assert usage.rows == {("1", TODAY): DailyUsage(TODAY, 1624, 190, runs=2)}
+
+
+async def test_finish_run_adds_the_streamed_run_tokens(chat: ChatUseCases, usage: FakeUsage) -> None:
+    session = await chat.create_session(RUDDY)
+
+    await chat.finish_run(RUDDY, session.session_id, "hola", TokenUsage(300, 40))
+
+    assert usage.rows == {("1", TODAY): DailyUsage(TODAY, 300, 40, runs=1)}
+
+
+async def test_finish_run_without_question_still_counts_the_tokens(chat: ChatUseCases, usage: FakeUsage) -> None:
+    # Un run que no trae texto del usuario (por ejemplo, la confirmación de una tool del navegador) igual gastó
+    session = await chat.create_session(RUDDY)
+
+    await chat.finish_run(RUDDY, session.session_id, None, TokenUsage(120, 15))
+
+    [stored] = await chat.list_sessions(RUDDY)
+    assert stored.title is None
+    assert usage.rows == {("1", TODAY): DailyUsage(TODAY, 120, 15, runs=1)}

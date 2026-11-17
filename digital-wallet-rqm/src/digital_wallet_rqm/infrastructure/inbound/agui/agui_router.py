@@ -1,11 +1,12 @@
 from collections.abc import AsyncIterator
 
-from ag_ui.core import EventType, RunAgentInput, UserMessage
+from ag_ui.core import RunAgentInput, RunFinishedEvent, UserMessage
 from ag_ui.encoder import EventEncoder
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from digital_wallet_rqm.application.chat_use_cases import ChatUseCases
+from digital_wallet_rqm.domain.models import CurrentUser, TokenUsage
 from digital_wallet_rqm.infrastructure.inbound.agui.wallet_agui_adapter import AGENT_NAME, WalletAGUIAdapter
 from digital_wallet_rqm.infrastructure.inbound.dependencies import (
     AcceptHeader,
@@ -47,7 +48,7 @@ async def run_wallet_agent(
     await chat.start_run(user, body.thread_id)
 
     encoder = EventEncoder(accept=accept)
-    events = _stream_run(agent, encoder, chat, body)
+    events = _stream_run(agent, encoder, chat, user, body)
     return StreamingResponse(events, media_type=encoder.get_content_type())
 
 
@@ -55,18 +56,29 @@ async def _stream_run(
     adapter: WalletAGUIAdapter,
     encoder: EventEncoder,
     chat: ChatUseCases,
+    user: CurrentUser,
     input_data: RunAgentInput,
 ) -> AsyncIterator[str]:
-    """Emite los eventos AG-UI del run; si terminó bien, registra la pregunta en la sesión"""
+    """Emite los eventos AG-UI del run; si terminó bien, registra la pregunta y los tokens consumidos"""
     question = _last_user_text(input_data)
     # Los errores del grafo llegan como evento RUN_ERROR: el status 200 ya se envió
-    finished = False
+    finished: RunFinishedEvent | None = None
     async for event in adapter.run(input_data):
-        finished = finished or event.type == EventType.RUN_FINISHED
+        if isinstance(event, RunFinishedEvent):
+            finished = event
         yield encoder.encode(event)
-    # Igual que en /chat: título y actividad solo si el run terminó bien
-    if finished and question:
-        await chat.finish_run(input_data.thread_id, question)
+    # Igual que en /chat: actividad y consumo solo si el run terminó bien
+    if finished is not None:
+        await chat.finish_run(user, input_data.thread_id, question, _run_usage(finished))
+
+
+def _run_usage(finished: RunFinishedEvent) -> TokenUsage:
+    """Suma los tokens que el adaptador juntó de todas las llamadas al LLM (una entrada por modelo)"""
+    total = TokenUsage()
+    for entry in finished.usage or []:
+        total += TokenUsage(entry.input_tokens or 0, entry.output_tokens or 0)
+    print(f"[usage]: in={total.input_tokens} out={total.output_tokens}")
+    return total
 
 
 def _last_user_text(input_data: RunAgentInput) -> str | None:

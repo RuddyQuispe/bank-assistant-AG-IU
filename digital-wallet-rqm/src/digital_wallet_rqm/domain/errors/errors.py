@@ -54,6 +54,12 @@ class SessionNotFoundError(NotFoundError):
     default_detail = "La sesión no existe"
 
 
+class InvalidUsageRangeError(BadRequestError):
+    """El rango de fechas del consumo está invertido o es demasiado largo"""
+
+    default_detail = "El rango debe ir de una fecha a otra igual o posterior, de un año como máximo"
+
+
 class InvalidCredentialsError(UnauthorizedError):
     """El login falló: el usuario no existe"""
 

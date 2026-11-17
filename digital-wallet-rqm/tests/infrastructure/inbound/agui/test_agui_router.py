@@ -1,6 +1,6 @@
 import json
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 import pytest
@@ -20,7 +20,16 @@ from digital_wallet_rqm.application.auth_use_cases import AuthUseCases
 from digital_wallet_rqm.application.chat_use_cases import ChatUseCases
 from digital_wallet_rqm.application.ports.chat_agent import ChatAgent
 from digital_wallet_rqm.application.ports.session_repository import SessionRepository
-from digital_wallet_rqm.domain.models import ChatMessage, ChatSession, CurrentUser, build_title
+from digital_wallet_rqm.application.ports.usage_repository import UsageRepository
+from digital_wallet_rqm.domain.models import (
+    AgentReply,
+    ChatMessage,
+    ChatSession,
+    CurrentUser,
+    DailyUsage,
+    TokenUsage,
+    build_title,
+)
 from digital_wallet_rqm.infrastructure.inbound.dependencies import (
     get_auth_use_cases,
     get_chat_use_cases,
@@ -39,6 +48,7 @@ from digital_wallet_rqm.main import app
 
 RUDDY = CurrentUser(user_id="1", nickname="ruddy")
 NOW = datetime(2026, 10, 26, tzinfo=UTC)
+TODAY = date(2026, 11, 16)
 
 
 class InMemorySessionRepository(SessionRepository):
@@ -67,10 +77,23 @@ class InMemorySessionRepository(SessionRepository):
         self.sessions.pop(session_id, None)
 
 
+class InMemoryUsageRepository(UsageRepository):
+    """Guarda cada run registrado: (usuario, día, tokens)"""
+
+    def __init__(self) -> None:
+        self.runs: list[tuple[str, date, TokenUsage]] = []
+
+    async def add(self, user_id: str, day: date, usage: TokenUsage) -> None:
+        self.runs.append((user_id, day, usage))
+
+    async def list_for_user(self, user_id: str, start: date, end: date) -> list[DailyUsage]:
+        raise NotImplementedError
+
+
 class UnusedChatAgent(ChatAgent):
     """El run de AG-UI corre el grafo directamente: el puerto ChatAgent no debe usarse aquí"""
 
-    async def answer(self, question: str, session_id: str, user: CurrentUser) -> str:
+    async def answer(self, question: str, session_id: str, user: CurrentUser) -> AgentReply:
         raise NotImplementedError
 
     async def history(self, session_id: str) -> list[ChatMessage]:
@@ -86,10 +109,19 @@ def _hidden_node(state: BankState) -> dict[str, Any]:
     return {}
 
 
+class _ReportingChatModel(GenericFakeChatModel):
+    """Chat model falso que, como Gemini, informa el consumo en el último chunk del streaming"""
+
+    def _stream(self, *args: Any, **kwargs: Any) -> Iterator[ChatGenerationChunk]:  # noqa: ANN401
+        yield from super()._stream(*args, **kwargs)
+        usage = {"input_tokens": 300, "output_tokens": 40, "total_tokens": 340}
+        yield ChatGenerationChunk(message=AIMessageChunk(content="", usage_metadata=usage))  # type: ignore[arg-type]
+
+
 def _answer_node(state: BankState, runtime: Runtime[GraphContext]) -> dict[str, Any]:
     # Simula el interpreter: responde con el usuario del contexto tipado
     user = runtime.context.user
-    llm = GenericFakeChatModel(messages=iter([AIMessage(content=f"hola {user.nickname if user else '?'}")]))
+    llm = _ReportingChatModel(messages=iter([AIMessage(content=f"hola {user.nickname if user else '?'}")]))
     return {"messages": [llm.invoke("x")]}
 
 
@@ -128,13 +160,16 @@ class Env:
         self.graph = _build_graph((_hidden_node, HIDDEN_FROM_CHAT), (_answer_node, None))
         self.sessions = InMemorySessionRepository()
         self.sessions.add("s1", RUDDY.user_id)
+        self.usage = InMemoryUsageRepository()
 
 
 @pytest.fixture
 def env() -> Iterator[Env]:
     environment = Env()
     app.dependency_overrides[get_rag_agent] = lambda: environment.graph
-    chat_service = ChatUseCases(agent=UnusedChatAgent(), sessions=environment.sessions)
+    chat_service = ChatUseCases(
+        agent=UnusedChatAgent(), sessions=environment.sessions, usage=environment.usage, today=lambda: TODAY
+    )
     app.dependency_overrides[get_chat_use_cases] = lambda: chat_service
     app.dependency_overrides[get_vector_store] = lambda: InMemoryVectorStore(DeterministicFakeEmbedding(size=8))
     yield environment
@@ -192,6 +227,13 @@ def test_finished_run_records_the_question_for_the_title(client: TestClient, env
     client.post("/agents/wallet", json=_run_input("s1", "¿Cuánto cuesta\nun SPEI?"))
 
     assert env.sessions.questions == [("s1", "¿Cuánto cuesta un SPEI?")]
+
+
+def test_finished_run_adds_its_tokens_to_the_user_day(client: TestClient, env: Env) -> None:
+    client.post("/agents/wallet", json=_run_input("s1"))
+
+    # Los tokens llegan en RUN_FINISHED.usage, que el adaptador suma de todas las llamadas al LLM
+    assert env.usage.runs == [("1", TODAY, TokenUsage(input_tokens=300, output_tokens=40))]
 
 
 def _tool_call_types(client: TestClient) -> list[str]:
@@ -288,6 +330,7 @@ def test_failed_run_ends_with_run_error_and_records_nothing(client: TestClient, 
     assert response.status_code == 200
     assert _events(response.text)[-1]["type"] == "RUN_ERROR"
     assert env.sessions.questions == []
+    assert env.usage.runs == []
 
 
 def test_unknown_thread_returns_404(client: TestClient) -> None:
