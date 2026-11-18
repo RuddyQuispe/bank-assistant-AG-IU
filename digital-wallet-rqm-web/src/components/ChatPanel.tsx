@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import type { ChatMessage } from '../models/chat/chat-message.model'
+import { BalanceCard } from './BalanceCard'
 
 interface ChatPanelProps {
   messages: ChatMessage[]
@@ -30,12 +31,16 @@ export function ChatPanel({ messages, running, step, error, onSend }: ChatPanelP
             key={message.id}
             className={`d-flex mb-2 ${message.role === 'user' ? 'justify-content-end' : 'justify-content-start'}`}
           >
-            <div
-              className={`px-3 py-2 rounded-3 ${message.role === 'user' ? 'bg-primary text-white' : 'bg-body border'}`}
-              style={{ maxWidth: '80%', whiteSpace: 'pre-wrap' }}
-            >
-              {message.content || <span className="spinner-grow spinner-grow-sm" aria-label="Typing" />}
-            </div>
+            {message.card ? (
+              <BalanceCard {...message.card} />
+            ) : (
+              <div
+                className={`px-3 py-2 rounded-3 ${message.role === 'user' ? 'bg-primary text-white' : 'bg-body border'}`}
+                style={{ maxWidth: '80%', whiteSpace: 'pre-wrap' }}
+              >
+                {message.content || <span className="spinner-grow spinner-grow-sm" aria-label="Typing" />}
+              </div>
+            )}
           </div>
         ))}
         {step && (

@@ -1,0 +1,221 @@
+/* Tarjeta del saldo: un "plástico" con su propio fondo, así se lee igual en modo claro y oscuro. */
+.balance-card {
+  --card-ink: #f4f7fb;
+  --card-muted: rgba(244, 247, 251, 0.68);
+  --card-glass: rgba(255, 255, 255, 0.14);
+  --card-glass-strong: rgba(255, 255, 255, 0.24);
+
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  width: min(100%, 22rem);
+  aspect-ratio: 1.586; /* proporción de una tarjeta bancaria (ISO 7810) */
+  padding: 1.25rem 1.4rem;
+  display: flex;
+  flex-direction: column;
+  border-radius: 1.25rem;
+  color: var(--card-ink);
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(45, 212, 191, 0.55) 0%, transparent 55%),
+    linear-gradient(140deg, #0b1630 0%, #13285a 48%, #0f4c5c 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.18) inset,
+    0 18px 40px -18px rgba(8, 20, 48, 0.75),
+    0 6px 14px -6px rgba(8, 20, 48, 0.45);
+  font-variant-numeric: tabular-nums;
+  animation: balance-card-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+
+/* Círculos de fondo y un brillo diagonal: profundidad sin imágenes */
+.balance-card::before,
+.balance-card::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.balance-card::before {
+  width: 15rem;
+  height: 15rem;
+  right: -6rem;
+  bottom: -8rem;
+  border: 1.5rem solid rgba(255, 255, 255, 0.05);
+}
+
+.balance-card::after {
+  width: 9rem;
+  height: 9rem;
+  right: 3.5rem;
+  bottom: -5.5rem;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.balance-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.18) inset,
+    0 24px 48px -18px rgba(8, 20, 48, 0.8),
+    0 8px 18px -6px rgba(8, 20, 48, 0.5);
+}
+
+.balance-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.balance-card__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.balance-card__logo {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: conic-gradient(from 200deg, #2dd4bf, #60a5fa, #a78bfa, #2dd4bf);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+}
+
+.balance-card__currency {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  background: var(--card-glass);
+  backdrop-filter: blur(6px);
+}
+
+.balance-card__label {
+  margin-top: auto;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--card-muted);
+}
+
+.balance-card__amount-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.balance-card__amount {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.balance-card__symbol {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--card-muted);
+}
+
+.balance-card__whole {
+  font-size: clamp(1.6rem, 6vw, 2.1rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.balance-card__whole--hidden {
+  letter-spacing: 0.12em;
+}
+
+.balance-card__cents {
+  margin-left: -0.3rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--card-muted);
+}
+
+.balance-card__toggle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 0;
+  border-radius: 50%;
+  color: inherit;
+  background: var(--card-glass);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.balance-card__toggle:hover {
+  background: var(--card-glass-strong);
+}
+
+.balance-card__toggle:active {
+  transform: scale(0.94);
+}
+
+.balance-card__toggle:focus-visible {
+  outline: 2px solid #5eead4;
+  outline-offset: 2px;
+}
+
+.balance-card__bottom {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+/* Chip de la tarjeta, dibujado con degradados */
+.balance-card__chip {
+  flex: none;
+  width: 2.2rem;
+  height: 1.65rem;
+  border-radius: 0.35rem;
+  background:
+    linear-gradient(90deg, transparent 45%, rgba(90, 60, 10, 0.35) 45% 55%, transparent 55%),
+    linear-gradient(0deg, transparent 30%, rgba(90, 60, 10, 0.3) 30% 36%, transparent 36% 64%, rgba(90, 60, 10, 0.3) 64% 70%, transparent 70%),
+    linear-gradient(135deg, #f6e3a1 0%, #d4a940 50%, #f3d77f 100%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.balance-card__number {
+  font-size: 0.95rem;
+  letter-spacing: 0.12em;
+}
+
+.balance-card__type {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--card-muted);
+}
+
+@keyframes balance-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .balance-card,
+  .balance-card__toggle {
+    animation: none;
+    transition: none;
+  }
+}

@@ -4,6 +4,8 @@ import { createWalletAgent } from '../api/agent'
 import { toErrorMessage } from '../api/config'
 import { getHistory } from '../api/sessions'
 import { APPEARANCE_TOOLS, runToolCall } from '../tools/appearance-tools'
+import { parseBalanceCard } from '../display/balance-card'
+import { DISPLAY_TOOLS, isDisplayTool } from '../display/display-tools'
 import type { ChatMessage } from '../models/chat/chat-message.model'
 import { ChatPanel } from './ChatPanel'
 
@@ -16,6 +18,11 @@ const STEP_LABELS: Record<string, string> = {
   interface: 'Updating the app…',
   interpreter: 'Writing the answer…',
 }
+
+const CARD_UNAVAILABLE = 'The balance card could not be displayed.'
+
+// Tools que el navegador ejecuta (apariencia) y las que solo dibuja (tarjetas)
+const CLIENT_TOOLS = [...APPEARANCE_TOOLS, ...DISPLAY_TOOLS]
 
 interface ConversationProps {
   token: string
@@ -44,9 +51,12 @@ export function Conversation({ token, sessionId, onRunFinished }: ConversationPr
           id: randomUUID(),
           role: m.role === 'human' ? 'user' : 'assistant',
           content: m.content,
+          // Tarjeta guardada: se vuelve a dibujar con los mismos datos
+          card: parseBalanceCard(m.card) ?? undefined,
         }))
-        setMessages(loaded)
-        agent.setMessages(loaded)
+        setMessages(loaded.map((m) => (m.card || m.content ? m : { ...m, content: CARD_UNAVAILABLE })))
+        // Al agente solo le sirve el texto; las tarjetas ya están en el checkpoint del backend
+        agent.setMessages(loaded.filter((m) => !m.card && m.content))
       } catch (err) {
         setError(toErrorMessage(err))
       } finally {
@@ -70,7 +80,7 @@ export function Conversation({ token, sessionId, onRunFinished }: ConversationPr
       const toolResults: ToolMessage[] = []
       await agent.runAgent(
         // El backend recibe qué tools tiene el navegador; si el agente pide una, llega como TOOL_CALL_*.
-        { tools: APPEARANCE_TOOLS },
+        { tools: CLIENT_TOOLS },
         {
           // El backend entra a un nodo del grafo: se muestra qué está haciendo.
           onStepStartedEvent: ({ event }) => {
@@ -86,8 +96,16 @@ export function Conversation({ token, sessionId, onRunFinished }: ConversationPr
             const text = textMessageBuffer + event.delta
             setMessages((current) => current.map((m) => (m.id === event.messageId ? { ...m, content: text } : m)))
           },
-          // El agente pidió una tool del navegador (tema, fondo, fuente): se aplica y se guarda su resultado.
           onToolCallEndEvent: ({ event, toolCallName, toolCallArgs }) => {
+            // Tool de solo mostrar (tarjeta del saldo): se dibuja en el chat y no devuelve resultado
+            if (isDisplayTool(toolCallName)) {
+              const card = parseBalanceCard(toolCallArgs) ?? undefined
+              // Datos rotos: se avisa en vez de dejar al usuario sin nada (el texto dice que hay una tarjeta)
+              const content = card ? '' : CARD_UNAVAILABLE
+              setMessages((current) => [...current, { id: event.toolCallId, role: 'assistant', content, card }])
+              return
+            }
+            // El agente pidió una tool del navegador (tema, fondo, fuente): se aplica y se guarda su resultado.
             toolResults.push(runToolCall(event.toolCallId, toolCallName, toolCallArgs))
           },
           // El backend avisó un error dentro del stream.
