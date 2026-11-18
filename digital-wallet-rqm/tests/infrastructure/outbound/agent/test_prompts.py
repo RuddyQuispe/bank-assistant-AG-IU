@@ -39,3 +39,18 @@ def test_analyzer_offers_interface_route_for_theme_background_and_font() -> None
     assert '"quiero un fondo degradado de morado a rosado" → interface' in system.content
     assert '"cambia la fuente" → interface' in system.content
     assert '"agranda la letra" → interface' in system.content
+
+
+def test_interpreter_does_not_repeat_what_a_card_already_shows() -> None:
+    system, _ = INTERPRETER_PROMPT.format_messages(history="", information="", question="")
+
+    assert "tarjeta" in system.content
+    assert "no repitas montos ni números de cuenta" in system.content
+
+
+def test_interpreter_cites_sources_only_for_documents() -> None:
+    # Los datos de la cuenta (tools) no tienen archivo ni página: no se citan
+    system, _ = INTERPRETER_PROMPT.format_messages(history="", information="", question="")
+
+    assert "Cita las fuentes al final solo si la información viene de documentos" in system.content
+    assert "Los datos de la cuenta (saldo, tarjetas) no llevan cita" in system.content

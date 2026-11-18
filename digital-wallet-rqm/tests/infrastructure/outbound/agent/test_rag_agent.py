@@ -80,8 +80,9 @@ def test_bank_tools_route_runs_bank_tools_node(monkeypatch: pytest.MonkeyPatch, 
 
     result = _ask("cuánto tengo")
 
-    assert result["tool_results"] == [{"tool": "get_balance", "content": "Saldo disponible de ruddy: 1,500.50 Bs"}]
-    assert "get_balance: Saldo disponible de ruddy: 1,500.50 Bs" in interpreter_input[0]
+    balance = "Saldo disponible de ruddy en Caja de ahorro ****4567: 1,500.50 Bs"
+    assert result["tool_results"] == [{"tool": "get_balance", "content": balance}]
+    assert f"get_balance: {balance}" in interpreter_input[0]
     assert result["response"] == "respuesta 1"
 
 

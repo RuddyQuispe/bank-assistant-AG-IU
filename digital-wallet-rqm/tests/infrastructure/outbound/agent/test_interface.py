@@ -142,3 +142,23 @@ def test_prompt_covers_everything_the_analyzer_routes_here() -> None:
 
 def test_prompt_asks_to_turn_color_names_into_css_colors() -> None:
     assert "conviértelo tú a hex o rgb/rgba" in INTERFACE_SYSTEM_PROMPT
+
+
+def test_never_binds_display_tools(monkeypatch: pytest.MonkeyPatch) -> None:
+    # La tarjeta del saldo la emite bank_tools con datos reales: el LLM de interface no la puede elegir
+    fake = _patch_llm(monkeypatch)
+    balance_card = {"name": "show_account_balance", "description": "Muestra el saldo", "parameters": {}}
+
+    _run_node(_state("ponme el modo oscuro", [SET_THEME, balance_card]))
+
+    assert list(fake.bound_tools) == [SET_THEME]
+
+
+def test_only_display_tools_answers_with_fallback_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _patch_llm(monkeypatch)
+    balance_card = {"name": "show_account_balance", "description": "Muestra el saldo", "parameters": {}}
+
+    update = _run_node(_state("ponme el modo oscuro", [balance_card]))
+
+    assert fake.received == []
+    assert update["response"] == NO_CLIENT_TOOLS

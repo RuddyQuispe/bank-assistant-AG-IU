@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 
+from digital_wallet_rqm.domain.models.account_balance import AccountBalance
 from digital_wallet_rqm.domain.models.token_usage import TokenUsage
 
 
@@ -21,7 +22,8 @@ class ChatAnswer:
 
 @dataclass
 class ChatMessage:
-    """Un mensaje del historial: role es "human" o "ai" """
+    """Un mensaje del historial: role es "human" o "ai". Con "card", el agente mostró una tarjeta en vez de texto"""
 
     role: str
     content: str
+    card: AccountBalance | None = None

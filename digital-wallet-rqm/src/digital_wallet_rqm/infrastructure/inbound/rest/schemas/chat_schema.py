@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from digital_wallet_rqm.domain.models import ChatSession
+from digital_wallet_rqm.domain.models import AccountBalance, ChatSession
 
 
 class ChatRequest(BaseModel):
@@ -18,9 +18,30 @@ class ChatResponse(BaseModel):
     response: str = Field(examples=["Respuesta del asistente con las fuentes citadas al final."])
 
 
+class BalanceCardResponse(BaseModel):
+    """Tarjeta del saldo que el agente mostró en el chat"""
+
+    account_number: str = Field(examples=["1001234567"])
+    account_type: str = Field(examples=["Caja de ahorro"])
+    currency: str = Field(description="Código ISO 4217", examples=["BOB"])
+    available: str = Field(description="Saldo disponible como texto, sin perder decimales", examples=["1500.50"])
+
+    @classmethod
+    def from_domain(cls, card: AccountBalance) -> "BalanceCardResponse":
+        return cls(
+            account_number=card.account_number,
+            account_type=card.account_type,
+            currency=card.currency,
+            available=str(card.available),
+        )
+
+
 class MessageResponse(BaseModel):
     role: str = Field(description="human o ai", examples=["human"])
     content: str = Field(examples=["¿Cuánto cuesta el mantenimiento de una tarjeta de crédito?"])
+    card: BalanceCardResponse | None = Field(
+        default=None, description="Tarjeta del saldo que mostró el agente; en ese caso content viene vacío"
+    )
 
 
 class SessionResponse(BaseModel):

@@ -22,6 +22,8 @@ class WalletAGUIAdapter(LangGraphAgent):  # type: ignore[misc]
     def __init__(self, graph: RagAgent, context: GraphContext) -> None:
         super().__init__(name=AGENT_NAME, graph=graph)
         self._graph_context = context
+        # Tool calls ocultas en este run: su TOOL_CALL_RESULT tampoco se manda
+        self._hidden_tool_call_ids: set[str] = set()
 
     async def run(self, input: RunAgentInput) -> AsyncIterator[BaseEvent]:
         async for event in super().run(input):
@@ -31,8 +33,14 @@ class WalletAGUIAdapter(LangGraphAgent):  # type: ignore[misc]
 
     def _dispatch_event(self, event: BaseEvent) -> BaseEvent | None:
         # La base respeta "emit-tool-calls" al leer el LLM, pero al terminar cada tool vuelve a emitir
-        # las llamadas que no registró y ahí no mira la metadata: se filtran aquí
+        # las llamadas que no registró (y su resultado) y ahí no mira la metadata: se filtran aquí
         if event.type in _TOOL_CALL_EVENTS and _is_hidden_tool_call(event):
+            self._hidden_tool_call_ids.add(getattr(event, "tool_call_id", ""))
+            return None
+        # El resultado llega sin raw_event (no hay metadata que mirar): se oculta por el id de su llamada.
+        # Si llegara, el navegador lo guardaría como resultado de una tool que nunca vio
+        tool_call_id = getattr(event, "tool_call_id", None)
+        if event.type == EventType.TOOL_CALL_RESULT and tool_call_id in self._hidden_tool_call_ids:
             return None
         dispatched: BaseEvent | None = super()._dispatch_event(event)
         return dispatched

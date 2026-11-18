@@ -9,6 +9,7 @@ from digital_wallet_rqm.infrastructure.inbound.error_schema import (
     UNAUTHORIZED_RESPONSE,
 )
 from digital_wallet_rqm.infrastructure.inbound.rest.schemas.chat_schema import (
+    BalanceCardResponse,
     ChatRequest,
     ChatResponse,
     MessageResponse,
@@ -65,7 +66,8 @@ async def get_history(
     """Devuelve los mensajes de la sesión en orden."""
     messages = []
     for message in await chat.get_history(user, session_id):
-        messages.append(MessageResponse(role=message.role, content=message.content))
+        card = BalanceCardResponse.from_domain(message.card) if message.card else None
+        messages.append(MessageResponse(role=message.role, content=message.content, card=card))
     return messages
 
 

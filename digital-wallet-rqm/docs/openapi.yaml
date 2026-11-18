@@ -532,6 +532,38 @@ components:
       - source
       title: AudioPart
       description: An audio part.
+    BalanceCardResponse:
+      properties:
+        account_number:
+          type: string
+          title: Account Number
+          examples:
+          - '1001234567'
+        account_type:
+          type: string
+          title: Account Type
+          examples:
+          - Caja de ahorro
+        currency:
+          type: string
+          title: Currency
+          description: Código ISO 4217
+          examples:
+          - BOB
+        available:
+          type: string
+          title: Available
+          description: Saldo disponible como texto, sin perder decimales
+          examples:
+          - '1500.50'
+      type: object
+      required:
+      - account_number
+      - account_type
+      - currency
+      - available
+      title: BalanceCardResponse
+      description: Tarjeta del saldo que el agente mostró en el chat
     ChatRequest:
       properties:
         question:
@@ -839,6 +871,12 @@ components:
           title: Content
           examples:
           - ¿Cuánto cuesta el mantenimiento de una tarjeta de crédito?
+        card:
+          anyOf:
+          - $ref: '#/components/schemas/BalanceCardResponse'
+          - type: 'null'
+          description: Tarjeta del saldo que mostró el agente; en ese caso content
+            viene vacío
       type: object
       required:
       - role

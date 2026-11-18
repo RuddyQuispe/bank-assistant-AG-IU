@@ -55,6 +55,8 @@ class RetrieveUpdate(TypedDict):
 
 class ToolsUpdate(TypedDict):
     tool_results: list[ToolResult]
+    # Tarjetas que se mostraron en el chat (tool call + resultado): así quedan en el historial
+    messages: NotRequired[list[AnyMessage]]
 
 
 class InterfaceUpdate(TypedDict):

@@ -2,6 +2,8 @@ from collections.abc import Sequence
 
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 
+from digital_wallet_rqm.infrastructure.outbound.agent.display_tools import DISPLAY_TOOLS
+
 
 def format_recent_context(messages: Sequence[BaseMessage], limit: int = 2) -> str:
     """Formatea los últimos mensajes como 'Usuario: ...' / 'IA: ...'; vacío si hay menos de `limit`"""
@@ -16,7 +18,8 @@ def format_recent_context(messages: Sequence[BaseMessage], limit: int = 2) -> st
 
 def is_client_tool_result(messages: Sequence[BaseMessage]) -> bool:
     """True si el run trae el resultado de una tool del navegador (el último mensaje es de tipo tool)"""
-    return bool(messages) and isinstance(messages[-1], ToolMessage)
+    # Las tarjetas que guarda bank_tools también terminan en un ToolMessage, pero no son una acción del navegador
+    return bool(messages) and isinstance(messages[-1], ToolMessage) and messages[-1].name not in DISPLAY_TOOLS
 
 
 def format_client_tool_results(messages: Sequence[BaseMessage]) -> str:

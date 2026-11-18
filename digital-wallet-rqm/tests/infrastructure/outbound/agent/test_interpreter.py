@@ -58,6 +58,23 @@ def test_bank_tools_route_sends_tool_results(monkeypatch: pytest.MonkeyPatch) ->
     assert "get_balance: Saldo disponible: 1,500.50 MXN" in llm.human
 
 
+def test_bank_tools_route_with_saved_card_sends_tool_results(monkeypatch: pytest.MonkeyPatch) -> None:
+    llm = _patch_llm(monkeypatch)
+    call = AIMessage(content="", tool_calls=[{"name": "show_account_balance", "args": {}, "id": "balance-1"}])
+    displayed = ToolMessage(content="displayed", tool_call_id="balance-1", name="show_account_balance")
+    state = {
+        "messages": [HumanMessage(content="cuánto tengo"), call, displayed],
+        "question": "cuánto tengo",
+        "route": "bank_tools",
+        "tool_results": [{"tool": "get_balance", "content": "Se mostró al cliente una tarjeta"}],
+    }
+
+    node_interpreter(state)
+
+    assert "get_balance: Se mostró al cliente una tarjeta" in llm.human
+    assert "Acción aplicada" not in llm.human
+
+
 def test_analyst_route_sends_history_without_information(monkeypatch: pytest.MonkeyPatch) -> None:
     llm = _patch_llm(monkeypatch)
     state = {

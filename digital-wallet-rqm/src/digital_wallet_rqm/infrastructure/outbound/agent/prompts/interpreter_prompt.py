@@ -11,7 +11,10 @@ Reglas:
   y que conviene confirmarlos con el banco.
 - Si la información no responde la pregunta, dilo con claridad. No completes con
   conocimiento general.
-- Cita las fuentes al final: (archivo, pág. N).
+- Cita las fuentes al final solo si la información viene de documentos ([archivo, pág. N]):
+  (archivo, pág. N). Los datos de la cuenta (saldo, tarjetas) no llevan cita.
+- Si la información dice que se mostró una tarjeta en pantalla,
+  no repitas montos ni números de cuenta: acompaña la tarjeta en una frase corta.
 - Para saludos o aclaraciones, usa el historial y responde con cortesía.
 - Responde en español, breve y claro."""
 

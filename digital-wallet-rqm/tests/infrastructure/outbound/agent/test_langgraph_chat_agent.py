@@ -1,6 +1,7 @@
 """Adaptador ChatAgent sobre un grafo de prueba y el checkpointer SQLite real"""
 
 from collections.abc import AsyncIterator
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +10,7 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
 
-from digital_wallet_rqm.domain.models import ChatMessage, CurrentUser, TokenUsage
+from digital_wallet_rqm.domain.models import AccountBalance, ChatMessage, CurrentUser, TokenUsage
 from digital_wallet_rqm.infrastructure.outbound.agent.langgraph_chat_agent import LangGraphChatAgent
 from digital_wallet_rqm.infrastructure.outbound.agent.state.bank_state import BankState
 from digital_wallet_rqm.infrastructure.outbound.persistence.checkpointer import get_checkpointer
@@ -89,6 +90,35 @@ async def test_history_hides_client_tool_calls_and_their_results(agent: LangGrap
         ChatMessage(role="human", content="cambia a Roboto"),
         ChatMessage(role="ai", content="Listo, usé Roboto."),
     ]
+
+
+async def test_history_returns_the_saved_balance_card(agent: LangGraphChatAgent) -> None:
+    args = {"account_number": "1001234567", "account_type": "Caja de ahorro", "currency": "BOB", "available": "1500.50"}
+    call = AIMessage(content="", tool_calls=[{"name": "show_account_balance", "args": args, "id": "balance-1"}])
+    displayed = ToolMessage(content="displayed", tool_call_id="balance-1", name="show_account_balance")
+    answer = AIMessage(content="Acá tenés el saldo de tu caja de ahorro.")
+    await agent.graph.aupdate_state(
+        {"configurable": {"thread_id": "s1"}},
+        {"messages": [HumanMessage(content="cuánto tengo"), call, displayed, answer]},
+    )
+
+    card = AccountBalance(
+        account_number="1001234567", account_type="Caja de ahorro", currency="BOB", available=Decimal("1500.50")
+    )
+    assert await agent.history("s1") == [
+        ChatMessage(role="human", content="cuánto tengo"),
+        ChatMessage(role="ai", content="", card=card),
+        ChatMessage(role="ai", content="Acá tenés el saldo de tu caja de ahorro."),
+    ]
+
+
+async def test_history_skips_a_card_with_broken_data(agent: LangGraphChatAgent) -> None:
+    call = AIMessage(content="", tool_calls=[{"name": "show_account_balance", "args": {"currency": "BOB"}, "id": "b1"}])
+    await agent.graph.aupdate_state(
+        {"configurable": {"thread_id": "s1"}}, {"messages": [HumanMessage(content="cuánto tengo"), call]}
+    )
+
+    assert await agent.history("s1") == [ChatMessage(role="human", content="cuánto tengo")]
 
 
 async def test_forget_removes_only_that_session_history(agent: LangGraphChatAgent) -> None:

@@ -4,6 +4,7 @@ from langchain_core.callbacks import dispatch_custom_event
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 
+from digital_wallet_rqm.infrastructure.outbound.agent.display_tools import DISPLAY_TOOLS
 from digital_wallet_rqm.infrastructure.outbound.agent.prompts.interface_prompt import INTERFACE_SYSTEM_PROMPT
 from digital_wallet_rqm.infrastructure.outbound.agent.state.bank_state import BankState, InterfaceUpdate
 from digital_wallet_rqm.infrastructure.outbound.llm.llm_model import get_llm
@@ -16,8 +17,9 @@ NO_CLIENT_TOOLS = "Desde aquí no puedo cambiar la apariencia; hazlo desde la ap
 
 def node_interface(state: BankState, config: RunnableConfig) -> InterfaceUpdate:
     """Pide al LLM la tool del cliente (tema, fuente) y la manda al navegador sin ejecutarla"""
-    # 1. Sin tools del cliente (por ejemplo /chat) no hay nada que llamar
-    client_tools = state.get("tools", [])
+    # 1. Sin tools del cliente (por ejemplo /chat) no hay nada que llamar.
+    #    Las tools de solo mostrar (tarjetas) las emite el backend con datos reales: el LLM no las elige
+    client_tools = [tool for tool in state.get("tools", []) if tool.get("name") not in DISPLAY_TOOLS]
     if not client_tools:
         print("[interface]: el cliente no mandó tools")
         message = AIMessage(content=NO_CLIENT_TOOLS)

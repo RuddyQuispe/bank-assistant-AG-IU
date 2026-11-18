@@ -39,6 +39,7 @@ from digital_wallet_rqm.infrastructure.inbound.dependencies import (
 )
 from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
 from digital_wallet_rqm.infrastructure.outbound.agent.nodes import analyzer, interface, interpreter
+from digital_wallet_rqm.infrastructure.outbound.agent.nodes import tools as tools_node
 from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import HIDDEN_FROM_CHAT, build_rag_agent
 from digital_wallet_rqm.infrastructure.outbound.agent.route_decision import RouteDecision
 from digital_wallet_rqm.infrastructure.outbound.agent.state.bank_state import BankState
@@ -319,6 +320,47 @@ def test_client_tool_result_gets_a_text_confirmation(
     # El historial queda con una sola tool call (sin duplicados) y su resultado
     final = next(event for event in second if event["type"] == "MESSAGES_SNAPSHOT")["messages"]
     assert [message["role"] for message in final] == ["user", "assistant", "tool", "assistant"]
+
+
+BALANCE_CARD = {"name": "show_account_balance", "description": "Muestra el saldo", "parameters": {}}
+
+
+class _BalanceToolLLM:
+    """LLM falso de bank_tools: siempre pide get_balance"""
+
+    def bind_tools(self, tools: object) -> RunnableLambda[object, AIMessage]:
+        call = {"name": "get_balance", "args": {}, "id": "call-balance"}
+        return RunnableLambda(lambda _: AIMessage(content="", tool_calls=[call]))
+
+
+def test_balance_card_reaches_the_stream_with_the_tool_data(
+    client: TestClient, env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    decision = RouteDecision(route="bank_tools", reason="pide su saldo")
+    monkeypatch.setattr(analyzer, "get_llm", lambda temperature, response_format: RunnableLambda(lambda _: decision))
+    monkeypatch.setattr(tools_node, "get_llm", lambda temperature: _BalanceToolLLM())
+    answer = GenericFakeChatModel(messages=iter([AIMessage(content="Acá tenés el saldo de tu caja de ahorro.")]))
+    monkeypatch.setattr(interpreter, "get_llm", lambda temperature: answer)
+    env.graph = build_rag_agent(checkpointer=InMemorySaver())
+
+    events = _events(client.post("/agents/wallet", json=_run_input("s1", "cuánto tengo", [BALANCE_CARD])).text)
+
+    # Solo llega la tarjeta: la tool call get_balance que pidió el LLM queda oculta
+    calls = [event for event in events if event["type"].startswith("TOOL_CALL_")]
+    assert [event["type"] for event in calls] == ["TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END"]
+    assert calls[0]["toolCallName"] == "show_account_balance"
+    assert json.loads(calls[1]["delta"]) == {
+        "account_number": "1001234567",
+        "account_type": "Caja de ahorro",
+        "currency": "BOB",
+        "available": "1500.50",
+    }
+    text = "".join(event["delta"] for event in events if event["type"] == "TEXT_MESSAGE_CONTENT")
+    assert text == "Acá tenés el saldo de tu caja de ahorro."
+    # La tarjeta queda en el checkpoint con el mismo id que se mandó al navegador
+    snapshot = next(event for event in events if event["type"] == "MESSAGES_SNAPSHOT")["messages"]
+    assert [message["role"] for message in snapshot] == ["user", "assistant", "tool", "assistant"]
+    assert snapshot[1]["toolCalls"][0]["id"] == calls[0]["toolCallId"]
 
 
 def test_failed_run_ends_with_run_error_and_records_nothing(client: TestClient, env: Env) -> None:

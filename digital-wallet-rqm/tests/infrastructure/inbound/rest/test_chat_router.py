@@ -1,12 +1,20 @@
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
 from digital_wallet_rqm.domain.errors import SessionForbiddenError, SessionNotFoundError
-from digital_wallet_rqm.domain.models import ChatAnswer, ChatMessage, ChatSession, CurrentUser, TokenUsage
+from digital_wallet_rqm.domain.models import (
+    AccountBalance,
+    ChatAnswer,
+    ChatMessage,
+    ChatSession,
+    CurrentUser,
+    TokenUsage,
+)
 from digital_wallet_rqm.infrastructure.inbound.dependencies import get_chat_use_cases, get_current_user
 from digital_wallet_rqm.main import app
 
@@ -46,7 +54,14 @@ class FakeChatService:
 
     async def get_history(self, user: CurrentUser, session_id: str) -> list[ChatMessage]:
         self._check(session_id)
-        return [ChatMessage(role="human", content="hola"), ChatMessage(role="ai", content="eco: hola")]
+        card = AccountBalance(
+            account_number="1001234567", account_type="Caja de ahorro", currency="BOB", available=Decimal("1500.50")
+        )
+        return [
+            ChatMessage(role="human", content="hola"),
+            ChatMessage(role="ai", content="", card=card),
+            ChatMessage(role="ai", content="eco: hola"),
+        ]
 
     async def delete_session(self, user: CurrentUser, session_id: str) -> None:
         self._check(session_id)
@@ -130,8 +145,18 @@ def test_get_history(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json() == [
-        {"role": "human", "content": "hola"},
-        {"role": "ai", "content": "eco: hola"},
+        {"role": "human", "content": "hola", "card": None},
+        {
+            "role": "ai",
+            "content": "",
+            "card": {
+                "account_number": "1001234567",
+                "account_type": "Caja de ahorro",
+                "currency": "BOB",
+                "available": "1500.50",
+            },
+        },
+        {"role": "ai", "content": "eco: hola", "card": None},
     ]
 
 

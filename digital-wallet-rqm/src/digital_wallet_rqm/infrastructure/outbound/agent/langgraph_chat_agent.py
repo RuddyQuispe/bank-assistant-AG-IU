@@ -1,14 +1,22 @@
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.vectorstores import VectorStore
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from digital_wallet_rqm.application.ports.chat_agent import ChatAgent
 from digital_wallet_rqm.domain.models import AgentReply, ChatMessage, CurrentUser
 from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
+from digital_wallet_rqm.infrastructure.outbound.agent.display_tools import SHOW_ACCOUNT_BALANCE, balance_from_card_args
 from digital_wallet_rqm.infrastructure.outbound.agent.messages import is_visible_in_chat
 from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import RagAgent
 from digital_wallet_rqm.infrastructure.outbound.agent.token_counter import TokenCounter
 from digital_wallet_rqm.infrastructure.outbound.persistence.checkpointer import get_session_messages
+
+
+def _saved_cards(message: AIMessage) -> list[ChatMessage]:
+    """Tarjetas del saldo guardadas en el mensaje; una tarjeta con datos rotos no se muestra"""
+    calls = [call for call in message.tool_calls if call["name"] == SHOW_ACCOUNT_BALANCE]
+    cards = [balance_from_card_args(call["args"]) for call in calls]
+    return [ChatMessage(role="ai", content="", card=card) for card in cards if card is not None]
 
 
 class LangGraphChatAgent(ChatAgent):
@@ -35,9 +43,15 @@ class LangGraphChatAgent(ChatAgent):
 
     async def history(self, session_id: str) -> list[ChatMessage]:
         messages = await get_session_messages(self.graph, session_id)
-        return [
-            ChatMessage(role=message.type, content=message.text) for message in messages if is_visible_in_chat(message)
-        ]
+        history: list[ChatMessage] = []
+        for message in messages:
+            # 1. Tarjetas que mostró el agente (tool call de solo mostrar): se devuelven con sus datos
+            if isinstance(message, AIMessage):
+                history.extend(_saved_cards(message))
+            # 2. Texto del usuario y del agente
+            if is_visible_in_chat(message):
+                history.append(ChatMessage(role=message.type, content=message.text))
+        return history
 
     async def forget(self, session_id: str) -> None:
         await self.checkpointer.adelete_thread(session_id)
