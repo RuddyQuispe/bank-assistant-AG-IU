@@ -342,6 +342,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /qr/demo:
+    get:
+      tags:
+      - qr
+      summary: QR de prueba para el escáner simulado
+      description: 'Tokens de los QR de prueba. El QR no lleva datos del cobro: el
+        agente los busca al escanearlo.'
+      operationId: demo_qrs_qr_demo_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoQrsResponse'
+        '422':
+          description: El cuerpo o los parámetros no cumplen el formato esperado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Falta el token, es inválido o el usuario no existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
   /agents/wallet:
     post:
       tags:
@@ -671,6 +700,21 @@ components:
       - mimeType
       title: DataSource
       description: Bytes carried inline.
+    DemoQrsResponse:
+      properties:
+        codes:
+          items:
+            type: string
+          type: array
+          title: Codes
+          examples:
+          - - qr_af9bd6ff81dc2525a2fba110bf390946
+      type: object
+      required:
+      - codes
+      title: DemoQrsResponse
+      description: 'QR de prueba: solo sus tokens; los datos del cobro se obtienen
+        al escanearlos'
     DeveloperMessage:
       properties:
         subagentRunId:
@@ -877,11 +921,109 @@ components:
           - type: 'null'
           description: Tarjeta del saldo que mostró el agente; en ese caso content
             viene vacío
+        qr_payment:
+          anyOf:
+          - $ref: '#/components/schemas/QrPaymentCardResponse'
+          - type: 'null'
+          description: Cobro QR que mostró el agente; en ese caso content viene vacío
+        receipt:
+          anyOf:
+          - $ref: '#/components/schemas/ReceiptResponse'
+          - type: 'null'
+          description: Comprobante de un pago con QR; en ese caso content viene vacío
       type: object
       required:
       - role
       - content
       title: MessageResponse
+    QrPaymentCardResponse:
+      properties:
+        code:
+          type: string
+          title: Code
+          description: Token del QR
+          examples:
+          - qr_af9bd6ff81dc2525a2fba110bf390946
+        recipient_name:
+          type: string
+          title: Recipient Name
+          examples:
+          - Juan Pérez
+        bank:
+          type: string
+          title: Bank
+          examples:
+          - Banco Unión
+        account_number:
+          type: string
+          title: Account Number
+          description: Cuenta destino (8 dígitos)
+          examples:
+          - '12345678'
+        document_id:
+          type: string
+          title: Document Id
+          description: NIT o carnet (8 dígitos)
+          examples:
+          - '87654321'
+        amount:
+          type: string
+          title: Amount
+          description: Monto como texto; "0" si lo asigna el pagador
+          examples:
+          - '350.00'
+        currency:
+          type: string
+          title: Currency
+          description: Código ISO 4217
+          examples:
+          - BOB
+        usage:
+          type: string
+          title: Usage
+          description: single (pago único) o multiple
+          examples:
+          - single
+        expires_on:
+          type: string
+          format: date
+          title: Expires On
+          examples:
+          - '2026-12-18'
+        note:
+          type: string
+          title: Note
+          examples:
+          - Alquiler noviembre
+        expired:
+          type: boolean
+          title: Expired
+        already_paid:
+          type: boolean
+          title: Already Paid
+        accounts:
+          items:
+            $ref: '#/components/schemas/BalanceCardResponse'
+          type: array
+          title: Accounts
+          description: Cuentas del cliente para pagar
+      type: object
+      required:
+      - code
+      - recipient_name
+      - bank
+      - account_number
+      - document_id
+      - amount
+      - currency
+      - usage
+      - expires_on
+      - note
+      - expired
+      - already_paid
+      - accounts
+      title: QrPaymentCardResponse
+      description: Cobro QR que el agente mostró en el chat, como estaba al escanearlo
     ReasoningMessage:
       properties:
         subagentRunId:
@@ -921,6 +1063,75 @@ components:
         alone
 
         rather than composing BaseMessage, because it carries no name.'
+    ReceiptResponse:
+      properties:
+        receipt_number:
+          type: string
+          title: Receipt Number
+          examples:
+          - PAY-3F9A1C2B7D
+        qr_code:
+          type: string
+          title: Qr Code
+          description: Token del QR pagado
+          examples:
+          - qr_af9bd6ff81dc2525a2fba110bf390946
+        recipient_name:
+          type: string
+          title: Recipient Name
+          examples:
+          - Juan Pérez
+        bank:
+          type: string
+          title: Bank
+          examples:
+          - Banco Unión
+        destination_account:
+          type: string
+          title: Destination Account
+          examples:
+          - '12345678'
+        from_account:
+          type: string
+          title: From Account
+          description: Cuenta del cliente que pagó
+          examples:
+          - '1001234567'
+        amount:
+          type: string
+          title: Amount
+          description: Monto pagado como texto
+          examples:
+          - '350.00'
+        currency:
+          type: string
+          title: Currency
+          examples:
+          - BOB
+        balance_after:
+          type: string
+          title: Balance After
+          description: Saldo de la cuenta después del pago
+          examples:
+          - '1150.50'
+        paid_at:
+          type: string
+          format: date-time
+          title: Paid At
+      type: object
+      required:
+      - receipt_number
+      - qr_code
+      - recipient_name
+      - bank
+      - destination_account
+      - from_account
+      - amount
+      - currency
+      - balance_after
+      - paid_at
+      title: ReceiptResponse
+      description: Comprobante de un pago con QR
     ResumeEntry:
       properties:
         interruptId:

@@ -13,6 +13,8 @@ from digital_wallet_rqm.infrastructure.inbound.rest.schemas.chat_schema import (
     ChatRequest,
     ChatResponse,
     MessageResponse,
+    QrPaymentCardResponse,
+    ReceiptResponse,
     SessionResponse,
 )
 
@@ -67,7 +69,13 @@ async def get_history(
     messages = []
     for message in await chat.get_history(user, session_id):
         card = BalanceCardResponse.from_domain(message.card) if message.card else None
-        messages.append(MessageResponse(role=message.role, content=message.content, card=card))
+        qr_payment = QrPaymentCardResponse.from_domain(message.qr_payment) if message.qr_payment else None
+        receipt = ReceiptResponse.from_domain(message.receipt) if message.receipt else None
+        messages.append(
+            MessageResponse(
+                role=message.role, content=message.content, card=card, qr_payment=qr_payment, receipt=receipt
+            )
+        )
     return messages
 
 

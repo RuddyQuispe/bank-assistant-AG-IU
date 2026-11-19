@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -9,10 +9,15 @@ from fastapi.testclient import TestClient
 from digital_wallet_rqm.domain.errors import SessionForbiddenError, SessionNotFoundError
 from digital_wallet_rqm.domain.models import (
     AccountBalance,
+    Bank,
     ChatAnswer,
     ChatMessage,
     ChatSession,
     CurrentUser,
+    PaymentReceipt,
+    QrPayment,
+    QrScan,
+    QrUsage,
     TokenUsage,
 )
 from digital_wallet_rqm.infrastructure.inbound.dependencies import get_chat_use_cases, get_current_user
@@ -24,6 +29,39 @@ UPDATED = datetime(2026, 10, 26, 11, 30, tzinfo=UTC)
 
 def _session(session_id: str, title: str | None) -> ChatSession:
     return ChatSession(session_id=session_id, user_id="1", title=title, created_at=CREATED, updated_at=UPDATED)
+
+
+QR_SCAN = QrScan(
+    qr=QrPayment(
+        code="qr_" + "a" * 32,
+        recipient_name="Juan Pérez",
+        bank=Bank.UNION,
+        account_number="12345678",
+        document_id="87654321",
+        amount=Decimal("350.00"),
+        currency="BOB",
+        usage=QrUsage.SINGLE,
+        expires_on=date(2026, 12, 18),
+        note="Alquiler noviembre",
+    ),
+    accounts=[AccountBalance("1001234567", "Caja de ahorro", "BOB", Decimal("1500.50"))],
+    expired=False,
+    already_paid=False,
+)
+
+
+RECEIPT = PaymentReceipt(
+    receipt_number="PAY-ABC123",
+    qr_code="qr_" + "a" * 32,
+    recipient_name="Juan Pérez",
+    bank=Bank.UNION,
+    destination_account="12345678",
+    from_account="1001234567",
+    amount=Decimal("350.00"),
+    currency="BOB",
+    balance_after=Decimal("1150.50"),
+    paid_at=datetime(2026, 11, 18, 15, 30, tzinfo=UTC),
+)
 
 
 class FakeChatService:
@@ -61,6 +99,8 @@ class FakeChatService:
             ChatMessage(role="human", content="hola"),
             ChatMessage(role="ai", content="", card=card),
             ChatMessage(role="ai", content="eco: hola"),
+            ChatMessage(role="ai", content="", qr_payment=QR_SCAN),
+            ChatMessage(role="ai", content="", receipt=RECEIPT),
         ]
 
     async def delete_session(self, user: CurrentUser, session_id: str) -> None:
@@ -145,7 +185,7 @@ def test_get_history(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json() == [
-        {"role": "human", "content": "hola", "card": None},
+        {"role": "human", "content": "hola", "card": None, "qr_payment": None, "receipt": None},
         {
             "role": "ai",
             "content": "",
@@ -155,8 +195,56 @@ def test_get_history(client: TestClient) -> None:
                 "currency": "BOB",
                 "available": "1500.50",
             },
+            "qr_payment": None,
+            "receipt": None,
         },
-        {"role": "ai", "content": "eco: hola", "card": None},
+        {"role": "ai", "content": "eco: hola", "card": None, "qr_payment": None, "receipt": None},
+        {
+            "role": "ai",
+            "content": "",
+            "card": None,
+            "qr_payment": {
+                "code": "qr_" + "a" * 32,
+                "recipient_name": "Juan Pérez",
+                "bank": "Banco Unión",
+                "account_number": "12345678",
+                "document_id": "87654321",
+                "amount": "350.00",
+                "currency": "BOB",
+                "usage": "single",
+                "expires_on": "2026-12-18",
+                "note": "Alquiler noviembre",
+                "expired": False,
+                "already_paid": False,
+                "accounts": [
+                    {
+                        "account_number": "1001234567",
+                        "account_type": "Caja de ahorro",
+                        "currency": "BOB",
+                        "available": "1500.50",
+                    }
+                ],
+            },
+            "receipt": None,
+        },
+        {
+            "role": "ai",
+            "content": "",
+            "card": None,
+            "qr_payment": None,
+            "receipt": {
+                "receipt_number": "PAY-ABC123",
+                "qr_code": "qr_" + "a" * 32,
+                "recipient_name": "Juan Pérez",
+                "bank": "Banco Unión",
+                "destination_account": "12345678",
+                "from_account": "1001234567",
+                "amount": "350.00",
+                "currency": "BOB",
+                "balance_after": "1150.50",
+                "paid_at": "2026-11-18T15:30:00Z",
+            },
+        },
     ]
 
 

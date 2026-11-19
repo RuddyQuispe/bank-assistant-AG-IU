@@ -15,7 +15,13 @@ from digital_wallet_rqm.infrastructure.clock import business_today
 from digital_wallet_rqm.infrastructure.inbound.agui import agui_router
 from digital_wallet_rqm.infrastructure.inbound.error_schema import VALIDATION_ERROR_RESPONSE
 from digital_wallet_rqm.infrastructure.inbound.exception_handlers import register_exception_handlers
-from digital_wallet_rqm.infrastructure.inbound.rest.routers import auth_router, chat_router, index_router, usage_router
+from digital_wallet_rqm.infrastructure.inbound.rest.routers import (
+    auth_router,
+    chat_router,
+    demo_qr_router,
+    index_router,
+    usage_router,
+)
 from digital_wallet_rqm.infrastructure.outbound.agent.langgraph_chat_agent import LangGraphChatAgent
 from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import build_rag_agent
 from digital_wallet_rqm.infrastructure.outbound.persistence.checkpointer import get_checkpointer
@@ -120,6 +126,7 @@ def create_app() -> FastAPI:
     app.include_router(chat_router.router)
     app.include_router(index_router.router)
     app.include_router(usage_router.router)
+    app.include_router(demo_qr_router.router)
     app.include_router(agui_router.router)
 
     if docs_enabled:
