@@ -1,0 +1,176 @@
+/* Escáner de QR: pantalla oscura tipo cámara, con la misma paleta de la tarjeta del saldo. */
+.qr-scanner__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1060;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(5, 10, 25, 0.72);
+  backdrop-filter: blur(4px);
+  animation: qr-fade-in 200ms ease both;
+}
+
+.qr-scanner {
+  width: min(100%, 34rem);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  padding: 1.25rem;
+  border-radius: 1.25rem;
+  color: #f4f7fb;
+  background:
+    radial-gradient(120% 80% at 100% 0%, rgba(45, 212, 191, 0.3) 0%, transparent 55%),
+    linear-gradient(160deg, #0b1630 0%, #13285a 100%);
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.7);
+  animation: qr-pop-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.qr-scanner__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.qr-scanner__title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+/* Visor con esquinas y una línea que barre, como una cámara leyendo */
+.qr-scanner__viewfinder {
+  position: relative;
+  height: 7rem;
+  margin: 0 auto;
+  width: 7rem;
+}
+
+.qr-scanner__corner {
+  position: absolute;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 3px solid #5eead4;
+}
+
+.qr-scanner__corner--tl { top: 0; left: 0; border-right: 0; border-bottom: 0; border-top-left-radius: 0.6rem; }
+.qr-scanner__corner--tr { top: 0; right: 0; border-left: 0; border-bottom: 0; border-top-right-radius: 0.6rem; }
+.qr-scanner__corner--bl { bottom: 0; left: 0; border-right: 0; border-top: 0; border-bottom-left-radius: 0.6rem; }
+.qr-scanner__corner--br { bottom: 0; right: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 0.6rem; }
+
+.qr-scanner__line {
+  position: absolute;
+  left: 0.6rem;
+  right: 0.6rem;
+  height: 2px;
+  border-radius: 2px;
+  background: #5eead4;
+  box-shadow: 0 0 12px 2px rgba(94, 234, 212, 0.6);
+  animation: qr-sweep 1.8s ease-in-out infinite alternate;
+}
+
+.qr-scanner__help {
+  margin: 1.25rem 0 0.75rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: rgba(244, 247, 251, 0.7);
+}
+
+.qr-scanner__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.qr-scanner__option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.9rem;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.qr-scanner__option:hover {
+  transform: translateY(-2px);
+  border-color: rgba(94, 234, 212, 0.6);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.qr-scanner__option:focus-visible {
+  outline: 2px solid #5eead4;
+  outline-offset: 2px;
+}
+
+.qr-scanner__image {
+  width: 7.5rem;
+  height: 7.5rem;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.qr-scanner__image--loading {
+  display: block;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.qr-scanner__label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.qr-scanner__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.qr-scanner__download {
+  font-size: 0.75rem;
+  color: #5eead4;
+}
+
+.qr-scanner__error {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.6rem;
+  font-size: 0.85rem;
+  color: #fecaca;
+  background: rgba(220, 38, 38, 0.2);
+}
+
+@keyframes qr-sweep {
+  from { top: 0.6rem; }
+  to { top: calc(100% - 0.6rem); }
+}
+
+@keyframes qr-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes qr-pop-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qr-scanner__backdrop,
+  .qr-scanner,
+  .qr-scanner__line,
+  .qr-scanner__option {
+    animation: none;
+    transition: none;
+  }
+}

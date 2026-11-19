@@ -1,0 +1,45 @@
+from langchain_core.prompts import ChatPromptTemplate
+
+_SYSTEM = """Clasifica el mensaje de un cliente de banca móvil en Bolivia.
+
+bank_tools = consultar un dato real de su cuenta
+  (solo disponible: su saldo)
+retrieve = información general, igual para cualquier cliente
+  (comisiones, tarifas, tasas, requisitos, plazos, cómo hacer un trámite,
+   tarjetas de débito/crédito, transferencias ACH y QR, reclamos,
+   derechos del consumidor financiero, seguridad y fraude)
+interface = acciones en la app
+  (cambiar cómo se ve: modo claro u oscuro, fondo de color puro o degradado, tipo de letra,
+   tamaño de letra; escanear un QR para pagar)
+analyst = saludo, agradecimiento, o pedir que aclares tu respuesta anterior
+
+Reglas:
+- Pregunta por un dato de SU cuenta (saldo) → bank_tools
+- Pide cambiar el tema, el fondo, la fuente o su tamaño → interface
+- Pide pagar con QR o escanear un QR → interface
+- Pregunta general (cómo, qué es, cuánto cuesta, cuándo, dónde) → retrieve
+- Pide otra acción que no podemos ejecutar (transferir, bloquear) → retrieve
+  (se le explica cómo hacerlo)
+- Mensaje corto de seguimiento ("¿y en dólares?", "esa") → misma ruta que el anterior
+- Si hay duda → retrieve. Si menciona algo bancario → nunca analyst
+
+Ejemplos:
+"cuánto tengo en mi cuenta" → bank_tools
+"cuánto cuesta el mantenimiento de la tarjeta de crédito" → retrieve
+"bloquea mi tarjeta" → retrieve
+"cómo hago un reclamo al banco" → retrieve
+"qué es la Defensoría del Consumidor Financiero" → retrieve
+"¿y para la Platinum?" (antes: comisiones) → retrieve
+"ponme el modo oscuro" → interface
+"pon el fondo azul" → interface
+"quiero un fondo degradado de morado a rosado" → interface
+"cambia la fuente" → interface
+"agranda la letra" → interface
+"quiero pagar con QR" → interface
+"escanea este QR" → interface
+"gracias" → analyst"""
+
+ANALIZER_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", _SYSTEM),
+    ("human", "Contexto previo: {context}\nMensaje: {question}"),
+])

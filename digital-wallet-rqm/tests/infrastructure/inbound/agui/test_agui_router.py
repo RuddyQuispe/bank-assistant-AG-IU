@@ -1,0 +1,536 @@
+import json
+from collections.abc import Iterator
+from datetime import UTC, date, datetime
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+from langchain_core.embeddings import DeterministicFakeEmbedding
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage, AIMessageChunk
+from langchain_core.outputs import ChatGenerationChunk
+from langchain_core.runnables import RunnableLambda
+from langchain_core.tools import tool
+from langchain_core.vectorstores import InMemoryVectorStore
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph import END, START, MessagesState, StateGraph
+from langgraph.runtime import Runtime
+
+from digital_wallet_rqm.application.auth_use_cases import AuthUseCases
+from digital_wallet_rqm.application.chat_use_cases import ChatUseCases
+from digital_wallet_rqm.application.ports.chat_agent import ChatAgent
+from digital_wallet_rqm.application.ports.session_repository import SessionRepository
+from digital_wallet_rqm.application.ports.usage_repository import UsageRepository
+from digital_wallet_rqm.application.qr_payment_use_cases import QrPaymentUseCases
+from digital_wallet_rqm.domain.models import (
+    AgentReply,
+    ChatMessage,
+    ChatSession,
+    CurrentUser,
+    DailyUsage,
+    TokenUsage,
+    build_title,
+)
+from digital_wallet_rqm.infrastructure.inbound.dependencies import (
+    get_account_repository,
+    get_auth_use_cases,
+    get_chat_use_cases,
+    get_current_user,
+    get_qr_payment_use_cases,
+    get_rag_agent,
+    get_vector_store,
+)
+from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
+from digital_wallet_rqm.infrastructure.outbound.agent.nodes import analyzer, interface, interpreter
+from digital_wallet_rqm.infrastructure.outbound.agent.nodes import tools as tools_node
+from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import HIDDEN_FROM_CHAT, build_rag_agent
+from digital_wallet_rqm.infrastructure.outbound.agent.route_decision import RouteDecision
+from digital_wallet_rqm.infrastructure.outbound.agent.state.bank_state import BankState
+from digital_wallet_rqm.infrastructure.outbound.persistence.repositories import (
+    DEMO_QR_FIXED,
+    DemoAccountRepository,
+    DemoQrRepository,
+    DemoUserRepository,
+)
+from digital_wallet_rqm.infrastructure.outbound.security.jwt_token_service import JwtTokenService
+from digital_wallet_rqm.main import app
+
+RUDDY = CurrentUser(user_id="1", nickname="ruddy")
+NOW = datetime(2026, 10, 26, tzinfo=UTC)
+TODAY = date(2026, 11, 16)
+
+
+class InMemorySessionRepository(SessionRepository):
+    """Repositorio en memoria: los tests del adaptador no necesitan base de datos"""
+
+    def __init__(self) -> None:
+        self.sessions: dict[str, ChatSession] = {}
+        self.questions: list[tuple[str, str]] = []
+
+    def add(self, session_id: str, user_id: str) -> None:
+        self.sessions[session_id] = ChatSession(session_id, user_id, None, NOW, NOW)
+
+    async def create(self, user_id: str) -> ChatSession:
+        raise NotImplementedError
+
+    async def find(self, session_id: str) -> ChatSession | None:
+        return self.sessions.get(session_id)
+
+    async def list_for_user(self, user_id: str) -> list[ChatSession]:
+        return [session for session in self.sessions.values() if session.user_id == user_id]
+
+    async def record_question(self, session_id: str, question: str) -> None:
+        self.questions.append((session_id, build_title(question)))
+
+    async def delete(self, session_id: str) -> None:
+        self.sessions.pop(session_id, None)
+
+
+class InMemoryUsageRepository(UsageRepository):
+    """Guarda cada run registrado: (usuario, día, tokens)"""
+
+    def __init__(self) -> None:
+        self.runs: list[tuple[str, date, TokenUsage]] = []
+
+    async def add(self, user_id: str, day: date, usage: TokenUsage) -> None:
+        self.runs.append((user_id, day, usage))
+
+    async def list_for_user(self, user_id: str, start: date, end: date) -> list[DailyUsage]:
+        raise NotImplementedError
+
+
+class UnusedChatAgent(ChatAgent):
+    """El run de AG-UI corre el grafo directamente: el puerto ChatAgent no debe usarse aquí"""
+
+    async def answer(self, question: str, session_id: str, user: CurrentUser) -> AgentReply:
+        raise NotImplementedError
+
+    async def history(self, session_id: str) -> list[ChatMessage]:
+        raise NotImplementedError
+
+    async def forget(self, session_id: str) -> None:
+        raise NotImplementedError
+
+
+def _hidden_node(state: BankState) -> dict[str, Any]:
+    # Simula el analyzer: su LLM no debe llegar al chat
+    GenericFakeChatModel(messages=iter([AIMessage(content="ruta interna")])).invoke("x")
+    return {}
+
+
+class _ReportingChatModel(GenericFakeChatModel):
+    """Chat model falso que, como Gemini, informa el consumo en el último chunk del streaming"""
+
+    def _stream(self, *args: Any, **kwargs: Any) -> Iterator[ChatGenerationChunk]:  # noqa: ANN401
+        yield from super()._stream(*args, **kwargs)
+        usage = {"input_tokens": 300, "output_tokens": 40, "total_tokens": 340}
+        yield ChatGenerationChunk(message=AIMessageChunk(content="", usage_metadata=usage))  # type: ignore[arg-type]
+
+
+def _answer_node(state: BankState, runtime: Runtime[GraphContext]) -> dict[str, Any]:
+    # Simula el interpreter: responde con el usuario del contexto tipado
+    user = runtime.context.user
+    llm = _ReportingChatModel(messages=iter([AIMessage(content=f"hola {user.nickname if user else '?'}")]))
+    return {"messages": [llm.invoke("x")]}
+
+
+@tool
+def _lookup() -> str:
+    """Tool de prueba"""
+    return "dato interno"
+
+
+def _tool_node(state: BankState) -> dict[str, Any]:
+    # Simula el nodo tools: ejecuta la tool con un ToolCall completo, como hace node_tools
+    _lookup.invoke({"type": "tool_call", "id": "call-1", "name": _lookup.name, "args": {}})
+    return {}
+
+
+def _failing_node(state: BankState) -> dict[str, Any]:
+    raise RuntimeError("Gemini no responde")
+
+
+def _build_graph(*nodes: tuple[object, dict[str, bool] | None]) -> object:
+    builder = StateGraph(BankState, context_schema=GraphContext, input_schema=MessagesState)
+    names = []
+    for index, (node, metadata) in enumerate(nodes):
+        name = f"node_{index}"
+        builder.add_node(name, node, metadata=metadata)  # type: ignore[call-overload]
+        names.append(name)
+    builder.add_edge(START, names[0])
+    for current, following in zip(names, names[1:], strict=False):
+        builder.add_edge(current, following)
+    builder.add_edge(names[-1], END)
+    return builder.compile(checkpointer=InMemorySaver())
+
+
+class Env:
+    def __init__(self) -> None:
+        self.graph = _build_graph((_hidden_node, HIDDEN_FROM_CHAT), (_answer_node, None))
+        self.sessions = InMemorySessionRepository()
+        self.sessions.add("s1", RUDDY.user_id)
+        self.usage = InMemoryUsageRepository()
+
+
+@pytest.fixture
+def env() -> Iterator[Env]:
+    environment = Env()
+    app.dependency_overrides[get_rag_agent] = lambda: environment.graph
+    chat_service = ChatUseCases(
+        agent=UnusedChatAgent(), sessions=environment.sessions, usage=environment.usage, today=lambda: TODAY
+    )
+    app.dependency_overrides[get_chat_use_cases] = lambda: chat_service
+    app.dependency_overrides[get_vector_store] = lambda: InMemoryVectorStore(DeterministicFakeEmbedding(size=8))
+    accounts = DemoAccountRepository()
+    app.dependency_overrides[get_account_repository] = lambda: accounts
+    app.dependency_overrides[get_qr_payment_use_cases] = lambda: QrPaymentUseCases(
+        accounts=accounts, qrs=DemoQrRepository(today=lambda: TODAY), today=lambda: TODAY, now=lambda: NOW
+    )
+    yield environment
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client(env: Env) -> TestClient:
+    app.dependency_overrides[get_current_user] = lambda: RUDDY
+    # Sin "with": no se ejecuta el lifespan, así no se abre la base ni Chroma
+    return TestClient(app)
+
+
+def _run_input(thread_id: str, text: str = "hola", tools: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    return {
+        "threadId": thread_id,
+        "runId": "run-1",
+        "state": {},
+        "messages": [{"id": "m-1", "role": "user", "content": text}],
+        "tools": tools or [],
+        "context": [],
+        "forwardedProps": {},
+    }
+
+
+def _events(body: str) -> list[dict[str, Any]]:
+    return [json.loads(line.removeprefix("data: ")) for line in body.splitlines() if line.startswith("data: ")]
+
+
+def test_run_streams_ag_ui_events_with_the_answer(client: TestClient) -> None:
+    response = client.post("/agents/wallet", json=_run_input("s1"), headers={"Accept": "text/event-stream"})
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    events = _events(response.text)
+    types = [event["type"] for event in events]
+    assert types[0] == "RUN_STARTED"
+    assert types[-1] == "RUN_FINISHED"
+    streamed = "".join(event["delta"] for event in events if event["type"] == "TEXT_MESSAGE_CONTENT")
+    # La respuesta lleva al usuario del token (contexto tipado) y el LLM oculto no aparece
+    assert streamed == "hola ruddy"
+
+
+def test_streamed_message_id_matches_the_saved_message(client: TestClient) -> None:
+    events = _events(client.post("/agents/wallet", json=_run_input("s1")).text)
+
+    started = [event["messageId"] for event in events if event["type"] == "TEXT_MESSAGE_START"]
+    snapshot = next(event for event in events if event["type"] == "MESSAGES_SNAPSHOT")
+    assistant_ids = [message["id"] for message in snapshot["messages"] if message["role"] == "assistant"]
+    # Mismo id: el frontend no muestra la respuesta dos veces
+    assert started == assistant_ids
+
+
+def test_finished_run_records_the_question_for_the_title(client: TestClient, env: Env) -> None:
+    client.post("/agents/wallet", json=_run_input("s1", "¿Cuánto cuesta\nun SPEI?"))
+
+    assert env.sessions.questions == [("s1", "¿Cuánto cuesta un SPEI?")]
+
+
+def test_finished_run_adds_its_tokens_to_the_user_day(client: TestClient, env: Env) -> None:
+    client.post("/agents/wallet", json=_run_input("s1"))
+
+    # Los tokens llegan en RUN_FINISHED.usage, que el adaptador suma de todas las llamadas al LLM
+    assert env.usage.runs == [("1", TODAY, TokenUsage(input_tokens=300, output_tokens=40))]
+
+
+def _tool_call_types(client: TestClient) -> list[str]:
+    events = _events(client.post("/agents/wallet", json=_run_input("s1")).text)
+    calls = {"TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END"}
+    return [event["type"] for event in events if event["type"] in calls]
+
+
+def test_tool_call_of_a_hidden_node_does_not_reach_the_stream(client: TestClient, env: Env) -> None:
+    env.graph = _build_graph((_tool_node, HIDDEN_FROM_CHAT), (_answer_node, None))
+
+    assert _tool_call_types(client) == []
+
+
+def test_tool_call_of_a_visible_node_reaches_the_stream(client: TestClient, env: Env) -> None:
+    env.graph = _build_graph((_tool_node, None), (_answer_node, None))
+
+    assert _tool_call_types(client) == ["TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END"]
+
+
+SET_THEME = {
+    "name": "set_theme",
+    "description": "Cambia el tema de la app",
+    "parameters": {"type": "object", "properties": {"theme": {"type": "string", "enum": ["light", "dark"]}}},
+}
+
+
+class _ToolCallingChatModel(GenericFakeChatModel):
+    """Chat model falso que streamea una tool call, como hace Gemini con bind_tools"""
+
+    def bind_tools(self, tools: Any, **kwargs: Any) -> "_ToolCallingChatModel":
+        return self
+
+    def _stream(self, *args: Any, **kwargs: Any) -> Iterator[ChatGenerationChunk]:
+        chunk = AIMessageChunk(
+            content="",
+            tool_call_chunks=[{"name": "set_theme", "args": '{"theme": "dark"}', "id": "call-1", "index": 0}],
+        )
+        yield ChatGenerationChunk(message=chunk)
+
+
+def test_client_tool_call_of_the_interface_node_reaches_the_stream(
+    client: TestClient, env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    decision = RouteDecision(route="interface", reason="pide modo oscuro")
+    monkeypatch.setattr(analyzer, "get_llm", lambda temperature, response_format: RunnableLambda(lambda _: decision))
+    model = _ToolCallingChatModel(messages=iter([]))
+    monkeypatch.setattr(interface, "get_llm", lambda temperature: model)
+    env.graph = build_rag_agent(checkpointer=InMemorySaver())
+
+    body = _run_input("s1", "ponme el modo oscuro", tools=[SET_THEME])
+    events = _events(client.post("/agents/wallet", json=body).text)
+
+    calls = [event for event in events if event["type"].startswith("TOOL_CALL_")]
+    assert [event["type"] for event in calls] == ["TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END"]
+    assert calls[0]["toolCallName"] == "set_theme"
+    assert json.loads(calls[1]["delta"]) == {"theme": "dark"}
+    assert events[-1]["type"] == "RUN_FINISHED"
+
+
+def test_client_tool_result_gets_a_text_confirmation(
+    client: TestClient, env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    decision = RouteDecision(route="interface", reason="pide una fuente")
+    monkeypatch.setattr(analyzer, "get_llm", lambda temperature, response_format: RunnableLambda(lambda _: decision))
+    monkeypatch.setattr(interface, "get_llm", lambda temperature: _ToolCallingChatModel(messages=iter([])))
+    confirmation = GenericFakeChatModel(messages=iter([AIMessage(content="Listo, apliqué el modo oscuro.")]))
+    monkeypatch.setattr(interpreter, "get_llm", lambda temperature: confirmation)
+    env.graph = build_rag_agent(checkpointer=InMemorySaver())
+
+    # 1. Primer run: termina en la tool call; el frontend se queda con el snapshot de mensajes
+    first = _events(client.post("/agents/wallet", json=_run_input("s1", "ponme el modo oscuro", [SET_THEME])).text)
+    snapshot = next(event for event in first if event["type"] == "MESSAGES_SNAPSHOT")["messages"]
+
+    # 2. El navegador ejecutó set_theme y devuelve el resultado en un run nuevo
+    tool_result = {"id": "t-1", "role": "tool", "toolCallId": "call-1", "content": "ok: dark"}
+    body = {**_run_input("s1", tools=[SET_THEME]), "runId": "run-2", "messages": [*snapshot, tool_result]}
+    second = _events(client.post("/agents/wallet", json=body).text)
+
+    text = "".join(event["delta"] for event in second if event["type"] == "TEXT_MESSAGE_CONTENT")
+    assert text == "Listo, apliqué el modo oscuro."
+    assert not [event for event in second if event["type"].startswith("TOOL_CALL_")]
+    # El historial queda con una sola tool call (sin duplicados) y su resultado
+    final = next(event for event in second if event["type"] == "MESSAGES_SNAPSHOT")["messages"]
+    assert [message["role"] for message in final] == ["user", "assistant", "tool", "assistant"]
+
+
+BALANCE_CARD = {"name": "show_account_balance", "description": "Muestra el saldo", "parameters": {}}
+
+
+class _BalanceToolLLM:
+    """LLM falso de bank_tools: siempre pide get_balance"""
+
+    def bind_tools(self, tools: object) -> RunnableLambda[object, AIMessage]:
+        call = {"name": "get_balance", "args": {}, "id": "call-balance"}
+        return RunnableLambda(lambda _: AIMessage(content="", tool_calls=[call]))
+
+
+def test_balance_card_reaches_the_stream_with_the_tool_data(
+    client: TestClient, env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    decision = RouteDecision(route="bank_tools", reason="pide su saldo")
+    monkeypatch.setattr(analyzer, "get_llm", lambda temperature, response_format: RunnableLambda(lambda _: decision))
+    monkeypatch.setattr(tools_node, "get_llm", lambda temperature: _BalanceToolLLM())
+    answer = GenericFakeChatModel(messages=iter([AIMessage(content="Acá tenés el saldo de tu caja de ahorro.")]))
+    monkeypatch.setattr(interpreter, "get_llm", lambda temperature: answer)
+    env.graph = build_rag_agent(checkpointer=InMemorySaver())
+
+    events = _events(client.post("/agents/wallet", json=_run_input("s1", "cuánto tengo", [BALANCE_CARD])).text)
+
+    # Solo llega la tarjeta: la tool call get_balance que pidió el LLM queda oculta
+    calls = [event for event in events if event["type"].startswith("TOOL_CALL_")]
+    assert [event["type"] for event in calls] == ["TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END"]
+    assert calls[0]["toolCallName"] == "show_account_balance"
+    assert json.loads(calls[1]["delta"]) == {
+        "account_number": "1001234567",
+        "account_type": "Caja de ahorro",
+        "currency": "BOB",
+        "available": "1500.50",
+    }
+    text = "".join(event["delta"] for event in events if event["type"] == "TEXT_MESSAGE_CONTENT")
+    assert text == "Acá tenés el saldo de tu caja de ahorro."
+    # La tarjeta queda en el checkpoint con el mismo id que se mandó al navegador
+    snapshot = next(event for event in events if event["type"] == "MESSAGES_SNAPSHOT")["messages"]
+    assert [message["role"] for message in snapshot] == ["user", "assistant", "tool", "assistant"]
+    assert snapshot[1]["toolCalls"][0]["id"] == calls[0]["toolCallId"]
+
+
+SCAN_QR = {"name": "scan_qr", "description": "Abre el escáner", "parameters": {"type": "object", "properties": {}}}
+QR_CARD = {"name": "show_qr_payment", "description": "Muestra el cobro", "parameters": {}}
+RECEIPT_CARD = {"name": "show_payment_receipt", "description": "Comprobante", "parameters": {}}
+
+
+class _ScanQrChatModel(GenericFakeChatModel):
+    """interface pide abrir el escáner, como hace Gemini con bind_tools"""
+
+    def bind_tools(self, tools: object, **kwargs: object) -> "_ScanQrChatModel":
+        return self
+
+    def _stream(self, *args: object, **kwargs: object) -> Iterator[ChatGenerationChunk]:
+        call = {"name": "scan_qr", "args": "{}", "id": "scan-1", "index": 0}
+        chunk = AIMessageChunk(content="", tool_call_chunks=[call])
+        yield ChatGenerationChunk(message=chunk)
+
+
+def test_scanned_qr_shows_the_payment_card(client: TestClient, env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    decision = RouteDecision(route="interface", reason="pagar con QR")
+    monkeypatch.setattr(analyzer, "get_llm", lambda temperature, response_format: RunnableLambda(lambda _: decision))
+    monkeypatch.setattr(interface, "get_llm", lambda temperature: _ScanQrChatModel(messages=iter([])))
+    answer = GenericFakeChatModel(messages=iter([AIMessage(content="Revisá el cobro y elegí la cuenta.")]))
+    monkeypatch.setattr(interpreter, "get_llm", lambda temperature: answer)
+    env.graph = build_rag_agent(checkpointer=InMemorySaver())
+    tools = [SCAN_QR, QR_CARD]
+
+    # 1. Primer run: interface pide abrir el escáner
+    first = _events(client.post("/agents/wallet", json=_run_input("s1", "quiero pagar con QR", tools)).text)
+    snapshot = next(event for event in first if event["type"] == "MESSAGES_SNAPSHOT")["messages"]
+    assert [e["toolCallName"] for e in first if e["type"] == "TOOL_CALL_START"] == ["scan_qr"]
+
+    # 2. El navegador devuelve el token escaneado: el backend busca el cobro y manda la tarjeta
+    scanned = {"id": "t-1", "role": "tool", "toolCallId": "scan-1", "content": DEMO_QR_FIXED}
+    body = {**_run_input("s1", tools=tools), "runId": "run-2", "messages": [*snapshot, scanned]}
+    second = _events(client.post("/agents/wallet", json=body).text)
+
+    starts = [event for event in second if event["type"] == "TOOL_CALL_START"]
+    assert [event["toolCallName"] for event in starts] == ["show_qr_payment"]
+    args = json.loads(next(event["delta"] for event in second if event["type"] == "TOOL_CALL_ARGS"))
+    assert args["code"] == DEMO_QR_FIXED
+    assert args["recipient_name"] == "Juan Pérez"
+    assert len(args["accounts"]) == 3
+    text = "".join(event["delta"] for event in second if event["type"] == "TEXT_MESSAGE_CONTENT")
+    assert text == "Revisá el cobro y elegí la cuenta."
+
+
+def test_qr_payment_pauses_and_resumes_with_the_confirmation(
+    client: TestClient, env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    decision = RouteDecision(route="interface", reason="pagar con QR")
+    monkeypatch.setattr(analyzer, "get_llm", lambda temperature, response_format: RunnableLambda(lambda _: decision))
+    monkeypatch.setattr(interface, "get_llm", lambda temperature: _ScanQrChatModel(messages=iter([])))
+    replies = iter([AIMessage(content="Elegí la cuenta y tocá Pay."), AIMessage(content="Pago realizado.")])
+    monkeypatch.setattr(interpreter, "get_llm", lambda temperature: GenericFakeChatModel(messages=replies))
+    env.graph = build_rag_agent(checkpointer=InMemorySaver())
+    tools = [SCAN_QR, QR_CARD, RECEIPT_CARD]
+
+    # 1. Abre el escáner y 2. devuelve el token: la tarjeta llega y el run termina en pausa
+    first = _events(client.post("/agents/wallet", json=_run_input("s1", "quiero pagar con QR", tools)).text)
+    snapshot = next(event for event in first if event["type"] == "MESSAGES_SNAPSHOT")["messages"]
+    scanned = {"id": "t-1", "role": "tool", "toolCallId": "scan-1", "content": DEMO_QR_FIXED}
+    body = {**_run_input("s1", tools=tools), "runId": "run-2", "messages": [*snapshot, scanned]}
+    second = _events(client.post("/agents/wallet", json=body).text)
+    pause = next(event for event in second if event["type"] == "CUSTOM" and event["name"] == "on_interrupt")
+    assert json.loads(pause["value"]) == {"type": "qr_payment", "code": DEMO_QR_FIXED}
+    assert second[-1]["type"] == "RUN_FINISHED"
+
+    # 3. El cliente confirma: el run se reanuda, paga y manda el comprobante
+    resume = {"command": {"resume": {"action": "pay", "account_number": "1001234567", "amount": None}}}
+    snapshot = next(event for event in second if event["type"] == "MESSAGES_SNAPSHOT")["messages"]
+    body = {**_run_input("s1", tools=tools), "runId": "run-3", "messages": snapshot, "forwardedProps": resume}
+    third = _events(client.post("/agents/wallet", json=body).text)
+
+    starts = [event["toolCallName"] for event in third if event["type"] == "TOOL_CALL_START"]
+    assert starts == ["show_payment_receipt"]
+    receipt = json.loads(next(event["delta"] for event in third if event["type"] == "TOOL_CALL_ARGS"))
+    assert receipt["amount"] == "350.00"
+    assert receipt["balance_after"] == "1150.50"
+    text = "".join(event["delta"] for event in third if event["type"] == "TEXT_MESSAGE_CONTENT")
+    assert text == "Pago realizado."
+    assert not [event for event in third if event["type"] == "CUSTOM" and event["name"] == "on_interrupt"]
+
+
+def test_new_message_while_a_payment_is_pending_only_repeats_the_pause(
+    client: TestClient, env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ag_ui_langgraph no procesa un mensaje nuevo sobre un run en pausa: la web cancela el pago primero
+    decision = RouteDecision(route="interface", reason="pagar con QR")
+    monkeypatch.setattr(analyzer, "get_llm", lambda temperature, response_format: RunnableLambda(lambda _: decision))
+    monkeypatch.setattr(interface, "get_llm", lambda temperature: _ScanQrChatModel(messages=iter([])))
+    replies = iter([AIMessage(content="Elegí la cuenta."), AIMessage(content="otra")])
+    monkeypatch.setattr(interpreter, "get_llm", lambda temperature: GenericFakeChatModel(messages=replies))
+    env.graph = build_rag_agent(checkpointer=InMemorySaver())
+    tools = [SCAN_QR, QR_CARD, RECEIPT_CARD]
+    first = _events(client.post("/agents/wallet", json=_run_input("s1", "quiero pagar con QR", tools)).text)
+    snapshot = next(event for event in first if event["type"] == "MESSAGES_SNAPSHOT")["messages"]
+    scanned = {"id": "t-1", "role": "tool", "toolCallId": "scan-1", "content": DEMO_QR_FIXED}
+    second_body = {**_run_input("s1", tools=tools), "runId": "run-2", "messages": [*snapshot, scanned]}
+    second = _events(client.post("/agents/wallet", json=second_body).text)
+    snapshot = next(event for event in second if event["type"] == "MESSAGES_SNAPSHOT")["messages"]
+
+    question = {"id": "m-2", "role": "user", "content": "cuánto tengo"}
+    body = {**_run_input("s1", tools=tools), "runId": "run-3", "messages": [*snapshot, question]}
+    third = _events(client.post("/agents/wallet", json=body).text)
+
+    assert [event["type"] for event in third] == ["RUN_STARTED", "CUSTOM", "RUN_FINISHED"]
+    assert third[1]["name"] == "on_interrupt"
+
+
+def test_failed_run_ends_with_run_error_and_records_nothing(client: TestClient, env: Env) -> None:
+    env.graph = _build_graph((_failing_node, None))
+
+    response = client.post("/agents/wallet", json=_run_input("s1"))
+
+    # El 200 ya se envió al abrir el stream: el error llega como evento, no como status
+    assert response.status_code == 200
+    assert _events(response.text)[-1]["type"] == "RUN_ERROR"
+    assert env.sessions.questions == []
+    assert env.usage.runs == []
+
+
+def test_unknown_thread_returns_404(client: TestClient) -> None:
+    response = client.post("/agents/wallet", json=_run_input("inventado"))
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "Recurso no encontrado", "detail": "La sesión no existe"}
+
+
+def test_session_of_another_user_returns_403(client: TestClient, env: Env) -> None:
+    env.sessions.add("ajena", "2")
+
+    response = client.post("/agents/wallet", json=_run_input("ajena"))
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "Acceso denegado", "detail": "La sesión pertenece a otro usuario"}
+
+
+def test_run_without_token_returns_401(env: Env) -> None:
+    app.dependency_overrides[get_auth_use_cases] = lambda: AuthUseCases(JwtTokenService("test-secret"), DemoUserRepository())
+
+    response = TestClient(app).post("/agents/wallet", json=_run_input("s1"))
+
+    assert response.status_code == 401
+    assert response.json() == {"error": "No autenticado", "detail": "Falta el token"}
+
+
+def test_cors_allows_the_frontend_origin(client: TestClient) -> None:
+    response = client.options(
+        "/agents/wallet",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"

@@ -1,0 +1,207 @@
+from collections.abc import Sequence
+from datetime import UTC, date, datetime
+from typing import Any
+
+import pytest
+from langchain_core.documents import Document
+from langchain_core.embeddings import DeterministicFakeEmbedding
+from langchain_core.language_models import LanguageModelInput
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.prompt_values import PromptValue
+from langchain_core.runnables import Runnable, RunnableConfig, RunnableLambda
+from langchain_core.tools import BaseTool
+from langchain_core.vectorstores import InMemoryVectorStore
+from langgraph.checkpoint.memory import InMemorySaver
+
+from digital_wallet_rqm.application.qr_payment_use_cases import QrPaymentUseCases
+from digital_wallet_rqm.domain.models import CurrentUser
+from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
+from digital_wallet_rqm.infrastructure.outbound.agent.nodes import analyzer, interface, interpreter, tools
+from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import RagAgent, build_rag_agent
+from digital_wallet_rqm.infrastructure.outbound.agent.route_decision import RouteDecision
+from digital_wallet_rqm.infrastructure.outbound.agent.types import Route
+from digital_wallet_rqm.infrastructure.outbound.persistence.repositories import (
+    DEMO_QR_FIXED,
+    DemoAccountRepository,
+    DemoQrRepository,
+)
+
+
+class _FakeToolsLLM:
+    def bind_tools(self, bound: Sequence[BaseTool]) -> Runnable[LanguageModelInput, AIMessage]:
+        call = AIMessage(content="", tool_calls=[{"name": "get_balance", "args": {}, "id": "call-1"}])
+        return RunnableLambda(lambda _: call)
+
+
+class _FakeInterpreterLLM:
+    """Responde "respuesta N" y guarda cada mensaje humano que recibió"""
+
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+
+    def __call__(self, temperature: float) -> RunnableLambda[PromptValue, AIMessage]:
+        return RunnableLambda(self._answer)
+
+    def _answer(self, prompt: PromptValue) -> AIMessage:
+        self.prompts.append(prompt.to_messages()[-1].text)
+        return AIMessage(content=f"respuesta {len(self.prompts)}")
+
+
+@pytest.fixture
+def interpreter_input(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Fakes every LLM; returns the human prompts the interpreter received"""
+    fake = _FakeInterpreterLLM()
+    monkeypatch.setattr(interpreter, "get_llm", fake)
+    monkeypatch.setattr(tools, "get_llm", lambda temperature: _FakeToolsLLM())
+    return fake.prompts
+
+
+def _route_to(monkeypatch: pytest.MonkeyPatch, route: Route) -> None:
+    decision = RouteDecision(route=route, reason="test")
+    monkeypatch.setattr(analyzer, "get_llm", lambda temperature, response_format: RunnableLambda(lambda _: decision))
+
+
+def _context() -> GraphContext:
+    store = InMemoryVectorStore(DeterministicFakeEmbedding(size=8))
+    doc = Document(page_content="El SPEI no tiene costo.", metadata={"file_name": "faq.pdf", "page": 0})
+    store.add_documents([doc])
+    accounts = DemoAccountRepository()
+    payments = QrPaymentUseCases(
+        accounts=accounts,
+        qrs=DemoQrRepository(today=lambda: date(2026, 11, 18)),
+        today=lambda: date(2026, 11, 18),
+        now=lambda: datetime(2026, 11, 18, tzinfo=UTC),
+    )
+    return GraphContext(
+        vector_store=store, user=CurrentUser(user_id="1", nickname="ruddy"), accounts=accounts, payments=payments
+    )
+
+
+def _ask(question: str, graph: RagAgent | None = None, config: RunnableConfig | None = None) -> dict[str, Any]:
+    result: dict[str, Any] = (graph or build_rag_agent()).invoke(
+        # Solo "messages": el nodo ingest deriva "question", igual que con los clientes reales
+        {"messages": [HumanMessage(content=question)]}, config=config, context=_context()
+    )
+    return result
+
+
+def test_graph_compiles_with_all_nodes() -> None:
+    graph = build_rag_agent()
+
+    assert {"ingest", "analyzer", "retrieve", "bank_tools", "interface", "interpreter"} <= set(graph.get_graph().nodes)
+
+
+def test_bank_tools_route_runs_bank_tools_node(monkeypatch: pytest.MonkeyPatch, interpreter_input: list[str]) -> None:
+    _route_to(monkeypatch, "bank_tools")
+
+    result = _ask("cuánto tengo")
+
+    balance = "Saldo disponible de ruddy en Caja de ahorro ****4567: 1,500.50 Bs"
+    assert result["tool_results"] == [{"tool": "get_balance", "content": balance}]
+    assert f"get_balance: {balance}" in interpreter_input[0]
+    assert result["response"] == "respuesta 1"
+
+
+def test_retrieve_route_uses_vector_store_from_context(
+    monkeypatch: pytest.MonkeyPatch, interpreter_input: list[str]
+) -> None:
+    _route_to(monkeypatch, "retrieve")
+
+    result = _ask("cuánto cuesta un SPEI")
+
+    assert result["retrieve_docs"] == ["El SPEI no tiene costo."]
+    assert "[faq.pdf, pág. 1] El SPEI no tiene costo." in interpreter_input[0]
+
+
+def test_analyst_route_goes_straight_to_interpreter(
+    monkeypatch: pytest.MonkeyPatch, interpreter_input: list[str]
+) -> None:
+    _route_to(monkeypatch, "analyst")
+
+    result = _ask("gracias")
+
+    assert "retrieve_docs" not in result
+    assert "tool_results" not in result
+    assert "Información: Ninguna (saludo o aclaración)" in interpreter_input[0]
+
+
+def test_checkpointer_keeps_history_per_thread(monkeypatch: pytest.MonkeyPatch, interpreter_input: list[str]) -> None:
+    _route_to(monkeypatch, "analyst")
+    graph = build_rag_agent(checkpointer=InMemorySaver())
+    config: RunnableConfig = {"configurable": {"thread_id": "sesion-1"}}
+
+    _ask("hola", graph=graph, config=config)
+    result = _ask("gracias", graph=graph, config=config)
+
+    assert [message.text for message in result["messages"]] == ["hola", "respuesta 1", "gracias", "respuesta 2"]
+
+
+def test_client_tools_from_input_reach_the_state(
+    monkeypatch: pytest.MonkeyPatch, interpreter_input: list[str]
+) -> None:
+    _route_to(monkeypatch, "analyst")
+    client_tools = [{"name": "set_theme", "description": "Switch theme", "parameters": {"type": "object"}}]
+
+    result = build_rag_agent().invoke(
+        # Así llega desde AG-UI: el adapter pone las tools del cliente en "tools"
+        {"messages": [HumanMessage(content="modo oscuro")], "tools": client_tools}, context=_context()
+    )
+
+    assert result["tools"] == client_tools
+
+
+class _FakeInterfaceLLM:
+    def bind_tools(self, bound: Sequence[dict[str, Any]]) -> Runnable[LanguageModelInput, AIMessage]:
+        call = AIMessage(content="", tool_calls=[{"name": "set_theme", "args": {"theme": "dark"}, "id": "call-1"}])
+        return RunnableLambda(lambda _: call)
+
+
+def test_interface_route_ends_with_the_client_tool_call(
+    monkeypatch: pytest.MonkeyPatch, interpreter_input: list[str]
+) -> None:
+    _route_to(monkeypatch, "interface")
+    monkeypatch.setattr(interface, "get_llm", lambda temperature: _FakeInterfaceLLM())
+    client_tools = [{"name": "set_theme", "description": "Switch theme", "parameters": {"type": "object"}}]
+
+    result = build_rag_agent().invoke(
+        {"messages": [HumanMessage(content="modo oscuro")], "tools": client_tools}, context=_context()
+    )
+
+    # El run termina en la tool call: el interpreter no redacta nada, el navegador la ejecuta
+    assert result["messages"][-1].tool_calls[0]["name"] == "set_theme"
+    assert interpreter_input == []
+
+
+def _fail_if_called(*args: object, **kwargs: object) -> None:
+    raise AssertionError("el analyzer no debe correr con el resultado de una tool del cliente")
+
+
+def test_client_tool_result_goes_straight_to_interpreter(
+    monkeypatch: pytest.MonkeyPatch, interpreter_input: list[str]
+) -> None:
+    monkeypatch.setattr(analyzer, "get_llm", _fail_if_called)
+    call = AIMessage(content="", tool_calls=[{"name": "set_font", "args": {"font": "Roboto"}, "id": "c1"}])
+    messages = [HumanMessage(content="cambia a Roboto"), call, ToolMessage(content="ok: Roboto", tool_call_id="c1")]
+
+    result = build_rag_agent().invoke({"messages": messages}, context=_context())
+
+    # Sin loop: no vuelve a interface, el interpreter confirma con el resultado del navegador
+    assert "set_font: ok: Roboto" in interpreter_input[0]
+    assert result["response"] == "respuesta 1"
+
+
+def test_scan_result_goes_to_qr_payment_and_then_to_the_interpreter(
+    monkeypatch: pytest.MonkeyPatch, interpreter_input: list[str]
+) -> None:
+    monkeypatch.setattr(analyzer, "get_llm", _fail_if_called)
+    call = AIMessage(content="", tool_calls=[{"name": "scan_qr", "args": {}, "id": "scan-1"}])
+    result_message = ToolMessage(content=DEMO_QR_FIXED, tool_call_id="scan-1")
+    messages = [HumanMessage(content="quiero pagar con QR"), call, result_message]
+    tools = [{"name": "show_qr_payment", "description": "Muestra el cobro", "parameters": {}}]
+
+    result = build_rag_agent().invoke({"messages": messages, "tools": tools}, context=_context())
+
+    # El interpreter recibe el resumen del cobro, no "Acción aplicada"
+    assert "scan_qr: Se mostró al cliente una tarjeta con el cobro QR de Juan Pérez" in interpreter_input[0]
+    assert "Acción aplicada" not in interpreter_input[0]
+    assert [message.type for message in result["messages"]][-3:] == ["ai", "tool", "ai"]
