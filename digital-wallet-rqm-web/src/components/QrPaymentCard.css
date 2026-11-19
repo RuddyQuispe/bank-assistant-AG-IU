@@ -1,0 +1,221 @@
+/* Tarjeta del cobro QR: cabecera con la paleta de la tarjeta del saldo y cuerpo con las variables de
+   Bootstrap, así se lee bien en modo claro y oscuro. */
+.qr-card {
+  width: min(100%, 24rem);
+  overflow: hidden;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 1.25rem;
+  background: var(--bs-body-bg);
+  box-shadow: 0 14px 34px -18px rgba(8, 20, 48, 0.55);
+  font-variant-numeric: tabular-nums;
+  animation: qr-card-in 380ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.qr-card__header {
+  position: relative;
+  padding: 1.1rem 1.25rem 1.2rem;
+  color: #f4f7fb;
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(45, 212, 191, 0.5) 0%, transparent 55%),
+    linear-gradient(140deg, #0b1630 0%, #13285a 55%, #0f4c5c 100%);
+}
+
+.qr-card__eyebrow {
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(244, 247, 251, 0.7);
+}
+
+.qr-card__recipient {
+  margin-top: 0.2rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.qr-card__bank {
+  font-size: 0.85rem;
+  color: rgba(244, 247, 251, 0.75);
+}
+
+.qr-card__amount {
+  margin-top: 0.6rem;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.qr-card__badge {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+  background: rgba(220, 38, 38, 0.85);
+}
+
+.qr-card__details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem 1rem;
+  margin: 0;
+  padding: 1rem 1.25rem 0.5rem;
+}
+
+.qr-card__details dt {
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+}
+
+.qr-card__details dd {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.qr-card__note {
+  grid-column: 1 / -1;
+}
+
+.qr-card__accounts {
+  margin: 0;
+  padding: 0.5rem 1.25rem 0;
+  border: 0;
+}
+
+.qr-card__accounts legend {
+  margin-bottom: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+}
+
+.qr-card__account {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.qr-card__account:has(input:checked) {
+  border-color: var(--bs-primary);
+  background: rgba(var(--bs-primary-rgb), 0.08);
+}
+
+.qr-card__account--disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.qr-card__account-name {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.qr-card__account-number {
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: var(--bs-secondary-color);
+}
+
+.qr-card__account-balance {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.qr-card__amount-field {
+  display: block;
+  padding: 0.5rem 1.25rem 0;
+}
+
+.qr-card__amount-field span {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+}
+
+.qr-card__footer {
+  padding: 0.75rem 1.25rem 1.1rem;
+}
+
+.qr-card__problem {
+  margin: 0 0 0.6rem;
+  font-size: 0.85rem;
+  color: var(--bs-danger-text-emphasis);
+}
+
+.qr-card__pay {
+  width: 100%;
+  border-radius: 0.75rem;
+  font-weight: 600;
+}
+
+@keyframes qr-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qr-card,
+  .qr-card__account {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Comprobante: misma tarjeta, cabecera en verde */
+.qr-card__header--success {
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(110, 231, 183, 0.45) 0%, transparent 55%),
+    linear-gradient(140deg, #064e3b 0%, #065f46 55%, #0f766e 100%);
+}
+
+.qr-card__check {
+  display: inline-grid;
+  place-items: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  color: #064e3b;
+  background: #a7f3d0;
+}
+
+.qr-card__details--receipt {
+  padding-bottom: 1.1rem;
+}
+
+.qr-card__mono {
+  font-family: var(--bs-font-monospace);
+  font-size: 0.8rem !important;
+}

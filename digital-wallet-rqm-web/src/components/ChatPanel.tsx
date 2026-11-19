@@ -1,6 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import type { ChatMessage } from '../models/chat/chat-message.model'
+import type { QrPaymentCardData } from '../display/qr-payment-card'
 import { BalanceCard } from './BalanceCard'
+import { PaymentReceiptCard } from './PaymentReceiptCard'
+import { QrPaymentCard, type PaymentChoice } from './QrPaymentCard'
 
 interface ChatPanelProps {
   messages: ChatMessage[]
@@ -8,10 +11,13 @@ interface ChatPanelProps {
   step: string | null
   error: string | null
   onSend: (question: string) => void
+  // Token del QR que el agente espera pagar: solo esa tarjeta habilita "Pay"
+  payableQr?: string | null
+  onPayQr?: (card: QrPaymentCardData, choice: PaymentChoice) => void
 }
 
 // Presentacional: dibuja los mensajes y la caja de pregunta.
-export function ChatPanel({ messages, running, step, error, onSend }: ChatPanelProps) {
+export function ChatPanel({ messages, running, step, error, onSend, payableQr, onPayQr }: ChatPanelProps) {
   const [question, setQuestion] = useState('')
 
   function handleSubmit(event: FormEvent) {
@@ -33,6 +39,17 @@ export function ChatPanel({ messages, running, step, error, onSend }: ChatPanelP
           >
             {message.card ? (
               <BalanceCard {...message.card} />
+            ) : message.qrPayment ? (
+              <QrPaymentCard
+                card={message.qrPayment}
+                onPay={
+                  onPayQr && !running && message.qrPayment.code === payableQr
+                    ? (choice) => onPayQr(message.qrPayment as QrPaymentCardData, choice)
+                    : undefined
+                }
+              />
+            ) : message.receipt ? (
+              <PaymentReceiptCard receipt={message.receipt} />
             ) : (
               <div
                 className={`px-3 py-2 rounded-3 ${message.role === 'user' ? 'bg-primary text-white' : 'bg-body border'}`}
