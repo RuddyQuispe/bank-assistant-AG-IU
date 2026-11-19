@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +9,7 @@ from scalar_fastapi import Theme, get_scalar_api_reference
 
 from digital_wallet_rqm.application.auth_use_cases import AuthUseCases
 from digital_wallet_rqm.application.chat_use_cases import ChatUseCases
+from digital_wallet_rqm.application.qr_payment_use_cases import QrPaymentUseCases
 from digital_wallet_rqm.application.usage_use_cases import UsageUseCases
 from digital_wallet_rqm.infrastructure.clock import business_today
 from digital_wallet_rqm.infrastructure.inbound.agui import agui_router
@@ -20,6 +22,8 @@ from digital_wallet_rqm.infrastructure.outbound.persistence.checkpointer import 
 from digital_wallet_rqm.infrastructure.outbound.persistence.database import get_engine
 from digital_wallet_rqm.infrastructure.outbound.persistence.legacy_sessions import import_legacy_sessions
 from digital_wallet_rqm.infrastructure.outbound.persistence.repositories import (
+    DemoAccountRepository,
+    DemoQrRepository,
     DemoUserRepository,
     SqlSessionRepository,
     SqlUsageRepository,
@@ -58,11 +62,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Grafo y vector store se comparten entre el chat REST y el adaptador AG-UI
         app.state.rag_agent = build_rag_agent(checkpointer)
         app.state.vector_store = vector_store
+        # Cuentas de prueba en memoria: una sola instancia, así un pago se ve en el saldo de todos los canales
+        app.state.account_repository = DemoAccountRepository()
+        # QR de cobro de prueba: el QR solo lleva un token y los datos se buscan acá
+        app.state.qr_repository = DemoQrRepository(today=business_today)
+        # Escanear y pagar QR: comparte las cuentas con get_balance, así un pago se ve en el saldo
+        app.state.qr_payment_use_cases = QrPaymentUseCases(
+            accounts=app.state.account_repository,
+            qrs=app.state.qr_repository,
+            today=business_today,
+            now=lambda: datetime.now(UTC),
+        )
         # Consumo de tokens por usuario y por día, en la misma base: lo suma el chat y lo lee /usage
         usage_repository = SqlUsageRepository(engine)
         # Caso de uso del chat (REST y AG-UI): recibe los adaptadores a través de sus puertos
         app.state.chat_use_cases = ChatUseCases(
-            agent=LangGraphChatAgent(app.state.rag_agent, checkpointer, vector_store),
+            agent=LangGraphChatAgent(
+                app.state.rag_agent,
+                checkpointer,
+                vector_store,
+                accounts=app.state.account_repository,
+                payments=app.state.qr_payment_use_cases,
+            ),
             sessions=SqlSessionRepository(engine),
             usage=usage_repository,
             today=business_today,

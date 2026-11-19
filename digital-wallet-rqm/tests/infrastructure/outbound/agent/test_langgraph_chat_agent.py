@@ -10,7 +10,9 @@ import pytest
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
+from langgraph.runtime import Runtime
 
+from digital_wallet_rqm.application.qr_payment_use_cases import QrPaymentUseCases
 from digital_wallet_rqm.domain.models import (
     AccountBalance,
     Bank,
@@ -22,10 +24,12 @@ from digital_wallet_rqm.domain.models import (
     QrUsage,
     TokenUsage,
 )
+from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
 from digital_wallet_rqm.infrastructure.outbound.agent.display_tools import qr_card_args, receipt_card_args
 from digital_wallet_rqm.infrastructure.outbound.agent.langgraph_chat_agent import LangGraphChatAgent
 from digital_wallet_rqm.infrastructure.outbound.agent.state.bank_state import BankState
 from digital_wallet_rqm.infrastructure.outbound.persistence.checkpointer import get_checkpointer
+from digital_wallet_rqm.infrastructure.outbound.persistence.repositories import DemoAccountRepository, DemoQrRepository
 
 pytestmark = pytest.mark.anyio
 
@@ -76,6 +80,31 @@ async def agent(tmp_path: Path) -> AsyncIterator[LangGraphChatAgent]:
         graph: Any = builder.compile(checkpointer=checkpointer)
         # El grafo de prueba no usa el vector store
         yield LangGraphChatAgent(graph, checkpointer, vector_store=None)  # type: ignore[arg-type]
+
+
+async def test_answer_gives_the_graph_the_accounts_and_payments(tmp_path: Path) -> None:
+    # Sin esto get_balance y los pagos QR responden "no disponible" por /chat
+    seen: dict[str, object] = {}
+
+    def node(state: BankState, runtime: Runtime[GraphContext]) -> dict[str, Any]:
+        seen["accounts"], seen["payments"] = runtime.context.accounts, runtime.context.payments
+        return {"response": "ok", "messages": [AIMessage(content="ok")]}
+
+    accounts = DemoAccountRepository()
+    payments = QrPaymentUseCases(
+        accounts=accounts, qrs=DemoQrRepository(today=date.today), today=date.today, now=lambda: datetime.now(UTC)
+    )
+    async with get_checkpointer(backend="sqlite", sqlite_path=tmp_path / "memory.db") as checkpointer:
+        builder = StateGraph(BankState, context_schema=GraphContext)
+        builder.add_node("node", node)
+        builder.add_edge(START, "node")
+        builder.add_edge("node", END)
+        graph: Any = builder.compile(checkpointer=checkpointer)
+        chat_agent = LangGraphChatAgent(graph, checkpointer, None, accounts=accounts, payments=payments)  # type: ignore[arg-type]
+
+        await chat_agent.answer("cuánto tengo", "s1", RUDDY)
+
+    assert seen == {"accounts": accounts, "payments": payments}
 
 
 async def test_answer_returns_the_graph_response(agent: LangGraphChatAgent) -> None:
