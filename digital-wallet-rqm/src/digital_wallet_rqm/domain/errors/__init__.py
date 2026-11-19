@@ -1,18 +1,32 @@
 from digital_wallet_rqm.domain.errors.base import AppError
 from digital_wallet_rqm.domain.errors.errors import (
+    AccountNotFoundError,
     BadRequestError,
     ConflictError,
+    CurrencyMismatchError,
     ForbiddenError,
+    InsufficientFundsError,
     InvalidCredentialsError,
+    InvalidPaymentAmountError,
     InvalidTokenError,
     InvalidUsageRangeError,
     NotFoundError,
+    QrAlreadyPaidError,
+    QrExpiredError,
+    QrNotFoundError,
     SessionForbiddenError,
     SessionNotFoundError,
     UnauthorizedError,
 )
 
 __all__ = [
+    "AccountNotFoundError",
+    "CurrencyMismatchError",
+    "InsufficientFundsError",
+    "InvalidPaymentAmountError",
+    "QrAlreadyPaidError",
+    "QrExpiredError",
+    "QrNotFoundError",
     "AppError",
     "BadRequestError",
     "ConflictError",

@@ -75,3 +75,45 @@ class InvalidTokenError(UnauthorizedError):
         # El motivo real queda para logs y tests; el cliente solo ve el detalle genérico
         super().__init__()
         self.reason = reason
+
+
+class QrNotFoundError(NotFoundError):
+    """El código escaneado no corresponde a ningún QR"""
+
+    default_detail = "El QR no existe"
+
+
+class AccountNotFoundError(NotFoundError):
+    """La cuenta no existe o no es del usuario: no se distingue para no revelar cuentas ajenas"""
+
+    default_detail = "La cuenta no existe"
+
+
+class QrExpiredError(ConflictError):
+    """El QR pasó su fecha de vencimiento"""
+
+    default_detail = "El QR está vencido"
+
+
+class QrAlreadyPaidError(ConflictError):
+    """El QR es de pago único y ya se pagó"""
+
+    default_detail = "El QR es de pago único y ya fue pagado"
+
+
+class InsufficientFundsError(ConflictError):
+    """La cuenta no tiene saldo para el pago"""
+
+    default_detail = "Saldo insuficiente"
+
+
+class InvalidPaymentAmountError(BadRequestError):
+    """El monto no sirve para ese QR"""
+
+    default_detail = "El monto debe ser mayor a 0 y tener como máximo 2 decimales"
+
+
+class CurrencyMismatchError(BadRequestError):
+    """La cuenta elegida es de otra moneda que el QR"""
+
+    default_detail = "La moneda de la cuenta no coincide con la del QR"

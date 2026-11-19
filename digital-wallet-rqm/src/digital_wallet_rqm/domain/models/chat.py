@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 
 from digital_wallet_rqm.domain.models.account_balance import AccountBalance
+from digital_wallet_rqm.domain.models.qr_payment import PaymentReceipt, QrScan
 from digital_wallet_rqm.domain.models.token_usage import TokenUsage
 
 
@@ -27,3 +28,7 @@ class ChatMessage:
     role: str
     content: str
     card: AccountBalance | None = None
+    # Cobro QR escaneado que mostró el agente (como estaba al escanearlo)
+    qr_payment: QrScan | None = None
+    # Comprobante de un pago con QR
+    receipt: PaymentReceipt | None = None
