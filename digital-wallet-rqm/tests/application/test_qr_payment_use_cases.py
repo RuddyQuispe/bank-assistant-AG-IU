@@ -190,7 +190,9 @@ def test_expired_qr_cannot_be_paid(payments: QrPaymentUseCases, accounts: InMemo
     assert accounts.balance("1001234567") == Decimal("1500.50")
 
 
-@pytest.mark.parametrize("amount", [None, Decimal("0"), Decimal("-5"), Decimal("10.001")])
+@pytest.mark.parametrize(
+    "amount", [None, Decimal("0"), Decimal("-5"), Decimal("10.001"), Decimal("NaN"), Decimal("Infinity")]
+)
 def test_open_amount_qr_needs_a_positive_amount_with_cents(payments: QrPaymentUseCases, amount: Decimal | None) -> None:
     with pytest.raises(InvalidPaymentAmountError):
         payments.pay(RUDDY, OPEN_CODE, account_number="1001234567", amount=amount)

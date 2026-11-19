@@ -116,6 +116,7 @@ def _amount_to_pay(qr: QrPayment, amount: Decimal | None) -> Decimal:
         if amount is not None and amount != qr.amount:
             raise InvalidPaymentAmountError(f"El QR tiene un monto fijo de {qr.amount:,.2f} {qr.currency}")
         return qr.amount
-    if amount is None or amount <= 0 or amount != amount.quantize(_CENTS):
+    # NaN e Infinity se descartan primero: compararlos o redondearlos lanza InvalidOperation
+    if amount is None or not amount.is_finite() or amount <= 0 or amount != amount.quantize(_CENTS):
         raise InvalidPaymentAmountError()
     return amount
