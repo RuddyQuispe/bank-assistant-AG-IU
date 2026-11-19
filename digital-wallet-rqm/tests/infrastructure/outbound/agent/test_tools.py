@@ -1,4 +1,6 @@
 from collections.abc import Sequence
+from dataclasses import replace
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
@@ -9,6 +11,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_core.runnables import Runnable, RunnableLambda
 from langchain_core.tools import BaseTool
 
+from digital_wallet_rqm.application.ports.account_repository import AccountRepository
 from digital_wallet_rqm.domain.models import CurrentUser
 from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
 from digital_wallet_rqm.infrastructure.outbound.agent.display_tools import SHOW_ACCOUNT_BALANCE
@@ -17,6 +20,7 @@ from digital_wallet_rqm.infrastructure.outbound.agent.nodes.interface import MAN
 from digital_wallet_rqm.infrastructure.outbound.agent.nodes.tools import node_tools
 from digital_wallet_rqm.infrastructure.outbound.agent.state.bank_state import ToolsUpdate
 from digital_wallet_rqm.infrastructure.outbound.agent.tools import TOOLS
+from digital_wallet_rqm.infrastructure.outbound.persistence.repositories import DemoAccountRepository
 
 RUDDY = CurrentUser(user_id="1", nickname="ruddy")
 BALANCE_TEXT = "Saldo disponible de ruddy en Caja de ahorro ****4567: 1,500.50 Bs"
@@ -53,9 +57,10 @@ def _state(question: str, client_tools: list[dict[str, Any]] | None = None) -> d
     return state
 
 
-def _runtime(user: CurrentUser | None = RUDDY) -> SimpleNamespace:
+def _runtime(user: CurrentUser | None = RUDDY, accounts: AccountRepository | None = None) -> SimpleNamespace:
     # Simula el Runtime de LangGraph: el nodo solo usa runtime.context
-    return SimpleNamespace(context=GraphContext(vector_store=None, user=user))
+    context = GraphContext(vector_store=None, user=user, accounts=accounts or DemoAccountRepository())
+    return SimpleNamespace(context=context)
 
 
 class _EmittedEvents(BaseCallbackHandler):
@@ -228,3 +233,25 @@ def test_without_balance_card_nothing_is_added_to_the_history(monkeypatch: pytes
     result = _run_node(_state("cuánto tengo"))
 
     assert "messages" not in result
+
+
+def test_balance_reads_the_main_account_from_the_repository(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Un pago descuenta el saldo en el repositorio: get_balance muestra el saldo actual
+    accounts = DemoAccountRepository()
+    main = accounts.list_for_user("1")[0]
+    accounts.save("1", replace(main, available=Decimal("1150.50")))
+    _patch_llm(monkeypatch, GET_BALANCE)
+
+    result = _run_node(_state("cuánto tengo"), _runtime(accounts=accounts))
+
+    content = "Saldo disponible de ruddy en Caja de ahorro ****4567: 1,150.50 Bs"
+    assert result == {"tool_results": [{"tool": "get_balance", "content": content}]}
+
+
+def test_tool_without_accounts_returns_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_llm(monkeypatch, GET_BALANCE)
+    runtime = SimpleNamespace(context=GraphContext(vector_store=None, user=RUDDY))
+
+    result = _run_node(_state("cuánto tengo"), runtime)
+
+    assert result == {"tool_results": [{"tool": "get_balance", "content": "Error: cuentas no disponibles."}]}

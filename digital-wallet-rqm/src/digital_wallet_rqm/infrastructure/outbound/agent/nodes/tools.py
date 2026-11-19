@@ -5,8 +5,9 @@ from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage, Too
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_config
 from langgraph.runtime import Runtime
+from pydantic import BaseModel
 
-from digital_wallet_rqm.domain.models import AccountBalance, CurrentUser
+from digital_wallet_rqm.domain.models import AccountBalance
 from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
 from digital_wallet_rqm.infrastructure.outbound.agent.display_tools import (
     SHOW_ACCOUNT_BALANCE,
@@ -24,17 +25,26 @@ from digital_wallet_rqm.infrastructure.settings import settings
 _TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
 
 
-def _execute(tool_call: ToolCall, user: CurrentUser | None) -> tuple[ToolResult, object]:
+def _execute(tool_call: ToolCall, context: GraphContext) -> tuple[ToolResult, object]:
     """Ejecuta la tool; devuelve su texto y sus datos (artifact) si la tool los trae"""
     tool = _TOOLS_BY_NAME.get(tool_call["name"])
     if tool is None:
         return ToolResult(tool=tool_call["name"], content="Error: herramienta no disponible."), None
 
-    # Las tools que declaran "user" lo reciben del servidor; se pisa cualquier valor que mande el LLM
-    if "user" in tool.get_input_jsonschema().get("properties", {}):
-        if user is None:
+    # Las tools que declaran "user" o "accounts" los reciben del servidor; se pisa lo que mande el LLM
+    # Campos del modelo y no el JSON schema: "accounts" es un puerto y no tiene representación JSON
+    schema = tool.get_input_schema()
+    declared = schema.model_fields if issubclass(schema, BaseModel) else {}
+    injected: dict[str, object] = {}
+    if "user" in declared:
+        if context.user is None:
             return ToolResult(tool=tool_call["name"], content="Error: usuario no autenticado."), None
-        tool_call = {**tool_call, "args": {**tool_call["args"], "user": user}}
+        injected["user"] = context.user
+    if "accounts" in declared:
+        if context.accounts is None:
+            return ToolResult(tool=tool_call["name"], content="Error: cuentas no disponibles."), None
+        injected["accounts"] = context.accounts
+    tool_call = {**tool_call, "args": {**tool_call["args"], **injected}}
 
     # Invoking with the full ToolCall returns a ToolMessage
     message = tool.invoke(tool_call)
@@ -74,13 +84,12 @@ def node_tools(state: BankState, runtime: Runtime[GraphContext]) -> ToolsUpdate:
         print("[tools]: el LLM no pidió ninguna tool")
         return {"tool_results": []}
 
-    # 2. Se ejecutan con el usuario del token
-    user = runtime.context.user
+    # 2. Se ejecutan con el usuario del token y sus cuentas
     can_show_card = client_can_display(state, SHOW_ACCOUNT_BALANCE)
     tool_results: list[ToolResult] = []
     card_messages: list[AnyMessage] = []
     for tool_call in ai_message.tool_calls:
-        result, data = _execute(tool_call, user)
+        result, data = _execute(tool_call, runtime.context)
         # 3. Si el cliente sabe dibujar la tarjeta, el saldo se muestra ahí
         if can_show_card and isinstance(data, AccountBalance):
             # get_config: la config del run actual (LangGraph no tipa nodos con runtime y config a la vez)

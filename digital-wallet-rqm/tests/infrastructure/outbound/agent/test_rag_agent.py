@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from datetime import UTC, date, datetime
 from typing import Any
 
 import pytest
@@ -12,12 +13,18 @@ from langchain_core.tools import BaseTool
 from langchain_core.vectorstores import InMemoryVectorStore
 from langgraph.checkpoint.memory import InMemorySaver
 
+from digital_wallet_rqm.application.qr_payment_use_cases import QrPaymentUseCases
 from digital_wallet_rqm.domain.models import CurrentUser
 from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
 from digital_wallet_rqm.infrastructure.outbound.agent.nodes import analyzer, interface, interpreter, tools
 from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import RagAgent, build_rag_agent
 from digital_wallet_rqm.infrastructure.outbound.agent.route_decision import RouteDecision
 from digital_wallet_rqm.infrastructure.outbound.agent.types import Route
+from digital_wallet_rqm.infrastructure.outbound.persistence.repositories import (
+    DEMO_QR_FIXED,
+    DemoAccountRepository,
+    DemoQrRepository,
+)
 
 
 class _FakeToolsLLM:
@@ -58,7 +65,16 @@ def _context() -> GraphContext:
     store = InMemoryVectorStore(DeterministicFakeEmbedding(size=8))
     doc = Document(page_content="El SPEI no tiene costo.", metadata={"file_name": "faq.pdf", "page": 0})
     store.add_documents([doc])
-    return GraphContext(vector_store=store, user=CurrentUser(user_id="1", nickname="ruddy"))
+    accounts = DemoAccountRepository()
+    payments = QrPaymentUseCases(
+        accounts=accounts,
+        qrs=DemoQrRepository(today=lambda: date(2026, 11, 18)),
+        today=lambda: date(2026, 11, 18),
+        now=lambda: datetime(2026, 11, 18, tzinfo=UTC),
+    )
+    return GraphContext(
+        vector_store=store, user=CurrentUser(user_id="1", nickname="ruddy"), accounts=accounts, payments=payments
+    )
 
 
 def _ask(question: str, graph: RagAgent | None = None, config: RunnableConfig | None = None) -> dict[str, Any]:
@@ -172,3 +188,20 @@ def test_client_tool_result_goes_straight_to_interpreter(
     # Sin loop: no vuelve a interface, el interpreter confirma con el resultado del navegador
     assert "set_font: ok: Roboto" in interpreter_input[0]
     assert result["response"] == "respuesta 1"
+
+
+def test_scan_result_goes_to_qr_payment_and_then_to_the_interpreter(
+    monkeypatch: pytest.MonkeyPatch, interpreter_input: list[str]
+) -> None:
+    monkeypatch.setattr(analyzer, "get_llm", _fail_if_called)
+    call = AIMessage(content="", tool_calls=[{"name": "scan_qr", "args": {}, "id": "scan-1"}])
+    result_message = ToolMessage(content=DEMO_QR_FIXED, tool_call_id="scan-1")
+    messages = [HumanMessage(content="quiero pagar con QR"), call, result_message]
+    tools = [{"name": "show_qr_payment", "description": "Muestra el cobro", "parameters": {}}]
+
+    result = build_rag_agent().invoke({"messages": messages, "tools": tools}, context=_context())
+
+    # El interpreter recibe el resumen del cobro, no "Acción aplicada"
+    assert "scan_qr: Se mostró al cliente una tarjeta con el cobro QR de Juan Pérez" in interpreter_input[0]
+    assert "Acción aplicada" not in interpreter_input[0]
+    assert [message.type for message in result["messages"]][-3:] == ["ai", "tool", "ai"]

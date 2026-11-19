@@ -1,6 +1,7 @@
 """Adaptador ChatAgent sobre un grafo de prueba y el checkpointer SQLite real"""
 
 from collections.abc import AsyncIterator
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -10,7 +11,18 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
 
-from digital_wallet_rqm.domain.models import AccountBalance, ChatMessage, CurrentUser, TokenUsage
+from digital_wallet_rqm.domain.models import (
+    AccountBalance,
+    Bank,
+    ChatMessage,
+    CurrentUser,
+    PaymentReceipt,
+    QrPayment,
+    QrScan,
+    QrUsage,
+    TokenUsage,
+)
+from digital_wallet_rqm.infrastructure.outbound.agent.display_tools import qr_card_args, receipt_card_args
 from digital_wallet_rqm.infrastructure.outbound.agent.langgraph_chat_agent import LangGraphChatAgent
 from digital_wallet_rqm.infrastructure.outbound.agent.state.bank_state import BankState
 from digital_wallet_rqm.infrastructure.outbound.persistence.checkpointer import get_checkpointer
@@ -18,6 +30,23 @@ from digital_wallet_rqm.infrastructure.outbound.persistence.checkpointer import 
 pytestmark = pytest.mark.anyio
 
 RUDDY = CurrentUser(user_id="1", nickname="ruddy")
+DemoQrPaymentScan = QrScan(
+    qr=QrPayment(
+        code="qr_" + "a" * 32,
+        recipient_name="Juan Pérez",
+        bank=Bank.UNION,
+        account_number="12345678",
+        document_id="87654321",
+        amount=Decimal("350.00"),
+        currency="BOB",
+        usage=QrUsage.SINGLE,
+        expires_on=date(2026, 12, 18),
+        note="Alquiler noviembre",
+    ),
+    accounts=[AccountBalance("1001234567", "Caja de ahorro", "BOB", Decimal("1500.50"))],
+    expired=False,
+    already_paid=False,
+)
 
 
 def _echo_node(state: BankState) -> dict[str, Any]:
@@ -119,6 +148,43 @@ async def test_history_skips_a_card_with_broken_data(agent: LangGraphChatAgent) 
     )
 
     assert await agent.history("s1") == [ChatMessage(role="human", content="cuánto tengo")]
+
+
+async def test_history_returns_the_saved_qr_payment_card(agent: LangGraphChatAgent) -> None:
+    scan = DemoQrPaymentScan
+    args = qr_card_args(scan)
+    call = AIMessage(content="", tool_calls=[{"name": "show_qr_payment", "args": args, "id": "qr-1"}])
+    displayed = ToolMessage(content="displayed", tool_call_id="qr-1", name="show_qr_payment")
+    await agent.graph.aupdate_state(
+        {"configurable": {"thread_id": "s1"}},
+        {"messages": [HumanMessage(content="quiero pagar con QR"), call, displayed]},
+    )
+
+    assert await agent.history("s1") == [
+        ChatMessage(role="human", content="quiero pagar con QR"),
+        ChatMessage(role="ai", content="", qr_payment=scan),
+    ]
+
+
+async def test_history_returns_the_saved_payment_receipt(agent: LangGraphChatAgent) -> None:
+    receipt = PaymentReceipt(
+        receipt_number="PAY-ABC123",
+        qr_code="qr_" + "a" * 32,
+        recipient_name="Juan Pérez",
+        bank=Bank.UNION,
+        destination_account="12345678",
+        from_account="1001234567",
+        amount=Decimal("350.00"),
+        currency="BOB",
+        balance_after=Decimal("1150.50"),
+        paid_at=datetime(2026, 11, 18, 15, 30, tzinfo=UTC),
+    )
+    args = receipt_card_args(receipt)
+    call = AIMessage(content="", tool_calls=[{"name": "show_payment_receipt", "args": args, "id": "r-1"}])
+    displayed = ToolMessage(content="displayed", tool_call_id="r-1", name="show_payment_receipt")
+    await agent.graph.aupdate_state({"configurable": {"thread_id": "s1"}}, {"messages": [call, displayed]})
+
+    assert await agent.history("s1") == [ChatMessage(role="ai", content="", receipt=receipt)]
 
 
 async def test_forget_removes_only_that_session_history(agent: LangGraphChatAgent) -> None:

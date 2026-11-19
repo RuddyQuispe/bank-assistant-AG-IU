@@ -34,6 +34,8 @@ class BankState(MessagesState):
     sources: NotRequired[list[Source]]
     tool_results: NotRequired[list[ToolResult]]
     response: NotRequired[str]
+    # Token del QR que espera la confirmación del cliente (qr_confirm pausa el grafo); None si no hay pago pendiente
+    awaiting_payment: NotRequired[str | None]
     # TODO(compactación, release futura): resumen de mensajes antiguos de la sesión.
     #  No se compacta en cada envío al grafo: solo cuando el usuario lo pida o cuando
     #  el historial llene el contexto del modelo. Descomentar al implementar ese flujo.
@@ -57,6 +59,23 @@ class ToolsUpdate(TypedDict):
     tool_results: list[ToolResult]
     # Tarjetas que se mostraron en el chat (tool call + resultado): así quedan en el historial
     messages: NotRequired[list[AnyMessage]]
+
+
+class QrPaymentUpdate(TypedDict):
+    tool_results: list[ToolResult]
+    # bank_tools: el interpreter lee tool_results, como con los datos de la cuenta
+    route: Route
+    # La tarjeta del cobro (tool call + resultado) queda en el historial
+    messages: NotRequired[list[AnyMessage]]
+    awaiting_payment: str | None
+
+
+class QrConfirmUpdate(TypedDict):
+    tool_results: list[ToolResult]
+    route: Route
+    # El comprobante (tool call + resultado) queda en el historial
+    messages: NotRequired[list[AnyMessage]]
+    awaiting_payment: None
 
 
 class InterfaceUpdate(TypedDict):

@@ -136,7 +136,7 @@ def test_tool_call_without_id_gets_one_shared_by_event_and_history(monkeypatch: 
 
 
 def test_prompt_covers_everything_the_analyzer_routes_here() -> None:
-    for topic in ("claro u oscuro", "color puro o degradado", "tipo de letra", "tamaño de letra"):
+    for topic in ("claro u oscuro", "color puro o degradado", "tipo de letra", "tamaño de letra", "escanear un QR"):
         assert topic in INTERFACE_SYSTEM_PROMPT
 
 

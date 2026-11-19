@@ -21,6 +21,7 @@ from digital_wallet_rqm.application.chat_use_cases import ChatUseCases
 from digital_wallet_rqm.application.ports.chat_agent import ChatAgent
 from digital_wallet_rqm.application.ports.session_repository import SessionRepository
 from digital_wallet_rqm.application.ports.usage_repository import UsageRepository
+from digital_wallet_rqm.application.qr_payment_use_cases import QrPaymentUseCases
 from digital_wallet_rqm.domain.models import (
     AgentReply,
     ChatMessage,
@@ -31,9 +32,11 @@ from digital_wallet_rqm.domain.models import (
     build_title,
 )
 from digital_wallet_rqm.infrastructure.inbound.dependencies import (
+    get_account_repository,
     get_auth_use_cases,
     get_chat_use_cases,
     get_current_user,
+    get_qr_payment_use_cases,
     get_rag_agent,
     get_vector_store,
 )
@@ -43,7 +46,12 @@ from digital_wallet_rqm.infrastructure.outbound.agent.nodes import tools as tool
 from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import HIDDEN_FROM_CHAT, build_rag_agent
 from digital_wallet_rqm.infrastructure.outbound.agent.route_decision import RouteDecision
 from digital_wallet_rqm.infrastructure.outbound.agent.state.bank_state import BankState
-from digital_wallet_rqm.infrastructure.outbound.persistence.repositories import DemoUserRepository
+from digital_wallet_rqm.infrastructure.outbound.persistence.repositories import (
+    DEMO_QR_FIXED,
+    DemoAccountRepository,
+    DemoQrRepository,
+    DemoUserRepository,
+)
 from digital_wallet_rqm.infrastructure.outbound.security.jwt_token_service import JwtTokenService
 from digital_wallet_rqm.main import app
 
@@ -173,6 +181,11 @@ def env() -> Iterator[Env]:
     )
     app.dependency_overrides[get_chat_use_cases] = lambda: chat_service
     app.dependency_overrides[get_vector_store] = lambda: InMemoryVectorStore(DeterministicFakeEmbedding(size=8))
+    accounts = DemoAccountRepository()
+    app.dependency_overrides[get_account_repository] = lambda: accounts
+    app.dependency_overrides[get_qr_payment_use_cases] = lambda: QrPaymentUseCases(
+        accounts=accounts, qrs=DemoQrRepository(today=lambda: TODAY), today=lambda: TODAY, now=lambda: NOW
+    )
     yield environment
     app.dependency_overrides.clear()
 
@@ -361,6 +374,115 @@ def test_balance_card_reaches_the_stream_with_the_tool_data(
     snapshot = next(event for event in events if event["type"] == "MESSAGES_SNAPSHOT")["messages"]
     assert [message["role"] for message in snapshot] == ["user", "assistant", "tool", "assistant"]
     assert snapshot[1]["toolCalls"][0]["id"] == calls[0]["toolCallId"]
+
+
+SCAN_QR = {"name": "scan_qr", "description": "Abre el escáner", "parameters": {"type": "object", "properties": {}}}
+QR_CARD = {"name": "show_qr_payment", "description": "Muestra el cobro", "parameters": {}}
+RECEIPT_CARD = {"name": "show_payment_receipt", "description": "Comprobante", "parameters": {}}
+
+
+class _ScanQrChatModel(GenericFakeChatModel):
+    """interface pide abrir el escáner, como hace Gemini con bind_tools"""
+
+    def bind_tools(self, tools: object, **kwargs: object) -> "_ScanQrChatModel":
+        return self
+
+    def _stream(self, *args: object, **kwargs: object) -> Iterator[ChatGenerationChunk]:
+        call = {"name": "scan_qr", "args": "{}", "id": "scan-1", "index": 0}
+        chunk = AIMessageChunk(content="", tool_call_chunks=[call])
+        yield ChatGenerationChunk(message=chunk)
+
+
+def test_scanned_qr_shows_the_payment_card(client: TestClient, env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    decision = RouteDecision(route="interface", reason="pagar con QR")
+    monkeypatch.setattr(analyzer, "get_llm", lambda temperature, response_format: RunnableLambda(lambda _: decision))
+    monkeypatch.setattr(interface, "get_llm", lambda temperature: _ScanQrChatModel(messages=iter([])))
+    answer = GenericFakeChatModel(messages=iter([AIMessage(content="Revisá el cobro y elegí la cuenta.")]))
+    monkeypatch.setattr(interpreter, "get_llm", lambda temperature: answer)
+    env.graph = build_rag_agent(checkpointer=InMemorySaver())
+    tools = [SCAN_QR, QR_CARD]
+
+    # 1. Primer run: interface pide abrir el escáner
+    first = _events(client.post("/agents/wallet", json=_run_input("s1", "quiero pagar con QR", tools)).text)
+    snapshot = next(event for event in first if event["type"] == "MESSAGES_SNAPSHOT")["messages"]
+    assert [e["toolCallName"] for e in first if e["type"] == "TOOL_CALL_START"] == ["scan_qr"]
+
+    # 2. El navegador devuelve el token escaneado: el backend busca el cobro y manda la tarjeta
+    scanned = {"id": "t-1", "role": "tool", "toolCallId": "scan-1", "content": DEMO_QR_FIXED}
+    body = {**_run_input("s1", tools=tools), "runId": "run-2", "messages": [*snapshot, scanned]}
+    second = _events(client.post("/agents/wallet", json=body).text)
+
+    starts = [event for event in second if event["type"] == "TOOL_CALL_START"]
+    assert [event["toolCallName"] for event in starts] == ["show_qr_payment"]
+    args = json.loads(next(event["delta"] for event in second if event["type"] == "TOOL_CALL_ARGS"))
+    assert args["code"] == DEMO_QR_FIXED
+    assert args["recipient_name"] == "Juan Pérez"
+    assert len(args["accounts"]) == 3
+    text = "".join(event["delta"] for event in second if event["type"] == "TEXT_MESSAGE_CONTENT")
+    assert text == "Revisá el cobro y elegí la cuenta."
+
+
+def test_qr_payment_pauses_and_resumes_with_the_confirmation(
+    client: TestClient, env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    decision = RouteDecision(route="interface", reason="pagar con QR")
+    monkeypatch.setattr(analyzer, "get_llm", lambda temperature, response_format: RunnableLambda(lambda _: decision))
+    monkeypatch.setattr(interface, "get_llm", lambda temperature: _ScanQrChatModel(messages=iter([])))
+    replies = iter([AIMessage(content="Elegí la cuenta y tocá Pay."), AIMessage(content="Pago realizado.")])
+    monkeypatch.setattr(interpreter, "get_llm", lambda temperature: GenericFakeChatModel(messages=replies))
+    env.graph = build_rag_agent(checkpointer=InMemorySaver())
+    tools = [SCAN_QR, QR_CARD, RECEIPT_CARD]
+
+    # 1. Abre el escáner y 2. devuelve el token: la tarjeta llega y el run termina en pausa
+    first = _events(client.post("/agents/wallet", json=_run_input("s1", "quiero pagar con QR", tools)).text)
+    snapshot = next(event for event in first if event["type"] == "MESSAGES_SNAPSHOT")["messages"]
+    scanned = {"id": "t-1", "role": "tool", "toolCallId": "scan-1", "content": DEMO_QR_FIXED}
+    body = {**_run_input("s1", tools=tools), "runId": "run-2", "messages": [*snapshot, scanned]}
+    second = _events(client.post("/agents/wallet", json=body).text)
+    pause = next(event for event in second if event["type"] == "CUSTOM" and event["name"] == "on_interrupt")
+    assert json.loads(pause["value"]) == {"type": "qr_payment", "code": DEMO_QR_FIXED}
+    assert second[-1]["type"] == "RUN_FINISHED"
+
+    # 3. El cliente confirma: el run se reanuda, paga y manda el comprobante
+    resume = {"command": {"resume": {"action": "pay", "account_number": "1001234567", "amount": None}}}
+    snapshot = next(event for event in second if event["type"] == "MESSAGES_SNAPSHOT")["messages"]
+    body = {**_run_input("s1", tools=tools), "runId": "run-3", "messages": snapshot, "forwardedProps": resume}
+    third = _events(client.post("/agents/wallet", json=body).text)
+
+    starts = [event["toolCallName"] for event in third if event["type"] == "TOOL_CALL_START"]
+    assert starts == ["show_payment_receipt"]
+    receipt = json.loads(next(event["delta"] for event in third if event["type"] == "TOOL_CALL_ARGS"))
+    assert receipt["amount"] == "350.00"
+    assert receipt["balance_after"] == "1150.50"
+    text = "".join(event["delta"] for event in third if event["type"] == "TEXT_MESSAGE_CONTENT")
+    assert text == "Pago realizado."
+    assert not [event for event in third if event["type"] == "CUSTOM" and event["name"] == "on_interrupt"]
+
+
+def test_new_message_while_a_payment_is_pending_only_repeats_the_pause(
+    client: TestClient, env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ag_ui_langgraph no procesa un mensaje nuevo sobre un run en pausa: la web cancela el pago primero
+    decision = RouteDecision(route="interface", reason="pagar con QR")
+    monkeypatch.setattr(analyzer, "get_llm", lambda temperature, response_format: RunnableLambda(lambda _: decision))
+    monkeypatch.setattr(interface, "get_llm", lambda temperature: _ScanQrChatModel(messages=iter([])))
+    replies = iter([AIMessage(content="Elegí la cuenta."), AIMessage(content="otra")])
+    monkeypatch.setattr(interpreter, "get_llm", lambda temperature: GenericFakeChatModel(messages=replies))
+    env.graph = build_rag_agent(checkpointer=InMemorySaver())
+    tools = [SCAN_QR, QR_CARD, RECEIPT_CARD]
+    first = _events(client.post("/agents/wallet", json=_run_input("s1", "quiero pagar con QR", tools)).text)
+    snapshot = next(event for event in first if event["type"] == "MESSAGES_SNAPSHOT")["messages"]
+    scanned = {"id": "t-1", "role": "tool", "toolCallId": "scan-1", "content": DEMO_QR_FIXED}
+    second_body = {**_run_input("s1", tools=tools), "runId": "run-2", "messages": [*snapshot, scanned]}
+    second = _events(client.post("/agents/wallet", json=second_body).text)
+    snapshot = next(event for event in second if event["type"] == "MESSAGES_SNAPSHOT")["messages"]
+
+    question = {"id": "m-2", "role": "user", "content": "cuánto tengo"}
+    body = {**_run_input("s1", tools=tools), "runId": "run-3", "messages": [*snapshot, question]}
+    third = _events(client.post("/agents/wallet", json=body).text)
+
+    assert [event["type"] for event in third] == ["RUN_STARTED", "CUSTOM", "RUN_FINISHED"]
+    assert third[1]["name"] == "on_interrupt"
 
 
 def test_failed_run_ends_with_run_error_and_records_nothing(client: TestClient, env: Env) -> None:

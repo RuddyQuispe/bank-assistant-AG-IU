@@ -2,10 +2,19 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.vectorstores import VectorStore
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
+from digital_wallet_rqm.application.ports.account_repository import AccountRepository
 from digital_wallet_rqm.application.ports.chat_agent import ChatAgent
+from digital_wallet_rqm.application.qr_payment_use_cases import QrPaymentUseCases
 from digital_wallet_rqm.domain.models import AgentReply, ChatMessage, CurrentUser
 from digital_wallet_rqm.infrastructure.outbound.agent.context import GraphContext
-from digital_wallet_rqm.infrastructure.outbound.agent.display_tools import SHOW_ACCOUNT_BALANCE, balance_from_card_args
+from digital_wallet_rqm.infrastructure.outbound.agent.display_tools import (
+    SHOW_ACCOUNT_BALANCE,
+    SHOW_PAYMENT_RECEIPT,
+    SHOW_QR_PAYMENT,
+    balance_from_card_args,
+    qr_scan_from_card_args,
+    receipt_from_card_args,
+)
 from digital_wallet_rqm.infrastructure.outbound.agent.messages import is_visible_in_chat
 from digital_wallet_rqm.infrastructure.outbound.agent.rag_agent import RagAgent
 from digital_wallet_rqm.infrastructure.outbound.agent.token_counter import TokenCounter
@@ -13,19 +22,34 @@ from digital_wallet_rqm.infrastructure.outbound.persistence.checkpointer import 
 
 
 def _saved_cards(message: AIMessage) -> list[ChatMessage]:
-    """Tarjetas del saldo guardadas en el mensaje; una tarjeta con datos rotos no se muestra"""
-    calls = [call for call in message.tool_calls if call["name"] == SHOW_ACCOUNT_BALANCE]
-    cards = [balance_from_card_args(call["args"]) for call in calls]
-    return [ChatMessage(role="ai", content="", card=card) for card in cards if card is not None]
+    """Tarjetas guardadas en el mensaje (saldo, cobro QR, comprobante); una con datos rotos no se muestra"""
+    cards: list[ChatMessage] = []
+    for call in message.tool_calls:
+        if call["name"] == SHOW_ACCOUNT_BALANCE and (card := balance_from_card_args(call["args"])):
+            cards.append(ChatMessage(role="ai", content="", card=card))
+        elif call["name"] == SHOW_QR_PAYMENT and (scan := qr_scan_from_card_args(call["args"])):
+            cards.append(ChatMessage(role="ai", content="", qr_payment=scan))
+        elif call["name"] == SHOW_PAYMENT_RECEIPT and (receipt := receipt_from_card_args(call["args"])):
+            cards.append(ChatMessage(role="ai", content="", receipt=receipt))
+    return cards
 
 
 class LangGraphChatAgent(ChatAgent):
     """Adaptador del puerto ChatAgent: corre el grafo RAG; el historial queda en el checkpointer"""
 
-    def __init__(self, graph: RagAgent, checkpointer: BaseCheckpointSaver[str], vector_store: VectorStore) -> None:
+    def __init__(
+        self,
+        graph: RagAgent,
+        checkpointer: BaseCheckpointSaver[str],
+        vector_store: VectorStore,
+        accounts: AccountRepository | None = None,
+        payments: QrPaymentUseCases | None = None,
+    ) -> None:
         self.graph = graph
         self.checkpointer = checkpointer
         self.vector_store = vector_store
+        self.accounts = accounts
+        self.payments = payments
 
     async def answer(self, question: str, session_id: str, user: CurrentUser) -> AgentReply:
         # Un contador por run: suma los tokens de todos los nodos que llaman al LLM
@@ -35,7 +59,9 @@ class LangGraphChatAgent(ChatAgent):
             {"messages": [HumanMessage(content=question)]},
             config={"configurable": {"thread_id": session_id}, "callbacks": [counter]},
             # El contexto se arma por pregunta porque lleva al usuario del token
-            context=GraphContext(vector_store=self.vector_store, user=user),
+            context=GraphContext(
+                vector_store=self.vector_store, user=user, accounts=self.accounts, payments=self.payments
+            ),
         )
         response: str = result.get("response", "")
         print(f"[usage]: user={user.user_id} in={counter.usage.input_tokens} out={counter.usage.output_tokens}")

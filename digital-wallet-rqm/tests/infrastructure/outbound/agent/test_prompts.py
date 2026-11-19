@@ -31,7 +31,8 @@ def test_interpreter_asks_for_currency_and_sources() -> None:
 def test_analyzer_offers_interface_route_for_theme_background_and_font() -> None:
     system, _ = ANALIZER_PROMPT.format_messages(context="", question="")
 
-    assert "interface = cambiar cómo se ve la app" in system.content
+    assert "interface = acciones en la app" in system.content
+    assert "cambiar cómo se ve" in system.content
     assert "fondo de color puro o degradado" in system.content
     assert "tamaño de letra" in system.content
     assert '"ponme el modo oscuro" → interface' in system.content
@@ -54,3 +55,15 @@ def test_interpreter_cites_sources_only_for_documents() -> None:
 
     assert "Cita las fuentes al final solo si la información viene de documentos" in system.content
     assert "Los datos de la cuenta (saldo, tarjetas) no llevan cita" in system.content
+
+
+def test_analyzer_sends_qr_payments_to_interface() -> None:
+    # Pagar con QR abre el escáner de la app (tool del cliente scan_qr)
+    system, _ = ANALIZER_PROMPT.format_messages(context="", question="")
+
+    assert "escanear un QR para pagar" in system.content
+    assert "Pide pagar con QR o escanear un QR → interface" in system.content
+    assert '"quiero pagar con QR" → interface' in system.content
+    assert '"escanea este QR" → interface' in system.content
+    # Las demás acciones que no ejecutamos siguen yendo a retrieve
+    assert "(transferir, bloquear) → retrieve" in system.content
