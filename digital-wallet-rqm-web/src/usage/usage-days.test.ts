@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { UsageReport } from '../models/usage/usage-report.model'
-import { formatDay, formatTokens, lastDays, todayUsage } from './usage-days'
+import { formatDay, formatTokens, formatTokensCompact, lastDays, todayUsage } from './usage-days'
 
 const report: UsageReport = {
   today: '2026-11-16',
@@ -46,5 +46,15 @@ describe('formatters', () => {
   it('shows days as dd/mm/yyyy and tokens with thousands separators', () => {
     expect(formatDay('2026-11-16')).toBe('16/11/2026')
     expect(formatTokens(48210)).toBe('48,210')
+  })
+})
+
+describe('formatTokensCompact', () => {
+  it('shortens thousands and millions for the mobile header', () => {
+    expect(formatTokensCompact(812)).toBe('812')
+    expect(formatTokensCompact(1000)).toBe('1k')
+    expect(formatTokensCompact(1512)).toBe('1.5k')
+    expect(formatTokensCompact(18539)).toBe('18.5k')
+    expect(formatTokensCompact(1250000)).toBe('1.3M')
   })
 })
