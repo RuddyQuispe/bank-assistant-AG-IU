@@ -31,7 +31,7 @@ function App() {
   }
 
   return (
-    <main className="min-vh-100 d-flex align-items-center justify-content-center p-3">
+    <main className={`min-vh-100 d-flex align-items-center justify-content-center ${token ? 'p-2 p-md-3' : 'p-3'}`}>
       {token ? (
         <ChatScreen nickname={nickname} token={token} onLogout={handleLogout} />
       ) : (

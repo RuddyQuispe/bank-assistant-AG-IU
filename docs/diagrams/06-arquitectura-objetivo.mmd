@@ -1,0 +1,16 @@
+flowchart LR
+    APP["App Flutter<br/>cliente AG-UI"]
+    subgraph SB["Spring Boot"]
+        direction TB
+        GR{{"Guardrails<br/>de entrada"}}
+        LG[["LangGraph4j<br/>+ Spring AI"]]
+        GR --> LG
+    end
+    CORE["Core bancario"]
+    PG[("PostgreSQL<br/>pgvector")]
+    MG[("MongoDB<br/>sesiones")]
+
+    APP -- "AG-UI" --> GR
+    LG --> CORE
+    LG --> PG
+    LG --> MG

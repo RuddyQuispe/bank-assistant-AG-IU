@@ -1,0 +1,28 @@
+flowchart LR
+    U([Cliente])
+    subgraph Web["digital-wallet-rqm-web (React + Vite)"]
+        UI[Chat / Tarjetas / Escáner QR]
+        HA["HttpAgent<br/>@ag-ui/client"]
+        CT["Client tools<br/>scan_qr · set_theme · show_*"]
+    end
+    subgraph API["digital-wallet-rqm (FastAPI)"]
+        REST["REST<br/>/auth · /chat · /usage · /qr · /admin"]
+        AGUI["POST /agents/wallet<br/>WalletAGUIAdapter"]
+        G[[Grafo LangGraph]]
+    end
+    subgraph Data["Persistencia"]
+        SQL[("SQLite / Postgres<br/>sesiones · uso · checkpoints")]
+        VS[("Chroma<br/>agent-bank-rag")]
+    end
+    GEM{{Google Gemini<br/>chat + embeddings}}
+
+    U --> UI
+    UI --> HA
+    UI --> CT
+    HA -- "SSE: eventos AG-UI" --> AGUI
+    UI -- JWT --> REST
+    AGUI --> G
+    G --> GEM
+    G --> VS
+    G --> SQL
+    REST --> SQL

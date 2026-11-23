@@ -37,3 +37,10 @@ export function formatDay(day: string): string {
 export function formatTokens(tokens: number): string {
   return tokens.toLocaleString('en-US')
 }
+
+const COMPACT = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
+
+// Versión corta para el header en móvil: 18539 -> "18.5k"
+export function formatTokensCompact(tokens: number): string {
+  return COMPACT.format(tokens).replace('K', 'k')
+}

@@ -37,6 +37,9 @@ class LangChainSettings:
     CHUNK_SIZE: int = 500
     CHUNK_OVERLAP: int = 50
     TOP_K_RESULTS: int = 3
+    # el free tier de Gemini acepta 100 embeddings por minuto: lotes de 90 con pausa de 60s
+    EMBED_BATCH_SIZE: int = 90
+    EMBED_BATCH_PAUSE_SECONDS: float = 60
     # memoria del grafo: "sqlite" o "postgres"
     MEMORY_BACKEND: str = "sqlite"
     SQLITE_DB_PATH: Path = Path("./data/memory.db")
