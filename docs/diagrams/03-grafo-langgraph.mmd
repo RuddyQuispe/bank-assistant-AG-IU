@@ -1,0 +1,22 @@
+flowchart TD
+    S((START)) --> ingest
+    ingest -- "mensaje trae un QR escaneado" --> qr_payment
+    ingest -- "resultado de una client tool" --> interpreter
+    ingest -- "pregunta nueva" --> analyzer
+
+    analyzer -- "route = retrieve" --> retrieve
+    analyzer -- "route = bank_tools" --> bank_tools
+    analyzer -- "route = interface" --> interface
+    analyzer -- "route = analyst" --> interpreter
+
+    retrieve --> interpreter
+    bank_tools --> interpreter
+    qr_payment --> interpreter
+    qr_confirm --> interpreter
+
+    interface --> E((END))
+    interpreter -- "awaiting_payment" --> qr_confirm
+    interpreter -- "sin pago pendiente" --> E
+
+    qr_confirm:::hitl
+    classDef hitl fill:#fde68a,stroke:#b45309,color:#000
